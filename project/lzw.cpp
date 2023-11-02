@@ -1,9 +1,10 @@
 #include <bits/stdc++.h>
+#include <vector>
 #include "common.h"
 
 using namespace std;
 
-vector<int> lzw(unsigned char *chunk) {
+vector<int> lzw(unsigned char *chunk, int chunk_length) {
 	cout << "Encoding\n";
 	unordered_map<string, int> table;
 	for (int i = 0; i <= 255; i++) {
@@ -13,13 +14,13 @@ vector<int> lzw(unsigned char *chunk) {
 	}
 
 	string p = "", c = "";
-	p += s1[0];
+	p += chunk[0];
 	int code = 256;
 	vector<int> output_code;
 	cout << "String\tOutput_Code\tAddition\n";
-	for (int i = 0; i < s1.length(); i++) {
-		if (i != s1.length() - 1)
-			c += s1[i + 1];
+	for (int i = 0; i < chunk_length; i++) {
+		if (i != chunk_length - 1)
+			c += chunk[i + 1];
 		if (table.find(p + c) != table.end()) {
 			p = p + c;
 		}
