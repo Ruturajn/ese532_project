@@ -4,7 +4,7 @@
 
 using namespace std;
 
-void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes) {
+void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes, uint32_t *code_length) {
 	cout << "Encoding\n";
 	unordered_map<string, int> table;
 	int chunk_length = end_idx - start_idx;
@@ -40,5 +40,6 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *l
 	// cout << p << "\t" << table[p] << endl;
 	// lzw_codes.push_back(table[p]);
 	lzw_codes[j] = table[p];
+	*code_length = j + 1;
 	return lzw_codes;
 }

@@ -33,6 +33,7 @@ void dedup(unsigned char *data, uint32_t start_idx, uint32_t end_idx,
 
 // LZW can accept chunks, so probably just pass a buffer that contains the chunk
 // to be compressed.
-void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes);
+void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes,
+         uint16_t *code_length);
 
 #endif

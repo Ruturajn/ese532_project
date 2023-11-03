@@ -48,8 +48,11 @@ static void compression_pipeline(unsigned char *input) {
     cdc(input, NUM_PACKETS * (NUM_ELEMENTS + HEADER), vect);
 
     for (int i = 0; i < vect.size() - 1; i++) {
+        uint16_t *out_packet = (uint16_t *)calloc(MAX_CHUNK_SIZE, sizeof(uint16_t));
+        CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW codes");
         sha_fingerprint = sha_256(input, vect[i], vect[i+1]);
-        dedup(input, vect[i], vect[i+1], sha_fingerprint);
+        dedup(input, vect[i], vect[i+1], sha_fingerprint, out_packet);
+        free(out_packet);
     }
 }
 
