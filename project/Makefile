@@ -83,7 +83,7 @@ $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	g++ -O3 $(PROJECT_SOURCES) -o "$@"
+	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -o "$@"
 
 $(SERVER_EXE): $(SERVER_OBJECTS)
 	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)
