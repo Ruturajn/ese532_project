@@ -62,9 +62,9 @@ DECODER_SOURCES = Decoder/Decoder.cpp
 DECODER_OBJECTS =$(DECODER_SOURCES:.cpp=.o)
 DECODER_EXE = decoder
 
-PROJECT_SOURCES = cdc.cpp sha.cpp dedup.cpp lzw.cpp main.cpp
-PROJECT_OBJECTS =$(DECODER_SOURCES:.cpp=.o)
-PROJECT_EXE = project
+PROJECT_SOURCES = cdc.cpp sha.cpp dedup.cpp lzw.cpp main.cpp Server/server.cpp
+PROJECT_OBJECTS =$(PROJECT_SOURCES:.cpp=.o)
+PROJECT_EXE = compress
 
 # CPU_SOURCES = cpu/Host.cpp ../../common/EventTimer.cpp ../../common/Utilities.cpp
 # CPU_OBJECTS=$(CPU_SOURCES:.cpp=.o)
@@ -77,11 +77,13 @@ PROJECT_EXE = project
 # 	$(HOST_CXX) -I./fpga/hls/ -o "$@" $(+) $(LDFLAGS)
 all: $(CLIENT_EXE) $(SERVER_EXE) $(DECODER_EXE) $(PROJECT_EXE)
 
+project: $(PROJECT_EXE)
+
 $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	g++ -O3 $(PROJECT_SOURCES) -o "$@"
+	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -o "$@"
 
 $(SERVER_EXE): $(SERVER_OBJECTS)
 	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)

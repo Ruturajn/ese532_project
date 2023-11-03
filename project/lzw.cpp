@@ -4,9 +4,10 @@
 
 using namespace std;
 
-vector<int> lzw(unsigned char *chunk, int chunk_length) {
+void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes) {
 	cout << "Encoding\n";
 	unordered_map<string, int> table;
+	int chunk_length = end_idx - start_idx;
 	for (int i = 0; i <= 255; i++) {
 		string ch = "";
 		ch += char(i);
@@ -16,8 +17,8 @@ vector<int> lzw(unsigned char *chunk, int chunk_length) {
 	string p = "", c = "";
 	p += chunk[0];
 	int code = 256;
-	vector<int> output_code;
-	cout << "String\tOutput_Code\tAddition\n";
+	int j = 0;
+	// cout << "String\tlzw_codes\tAddition\n";
 	for (int i = 0; i < chunk_length; i++) {
 		if (i != chunk_length - 1)
 			c += chunk[i + 1];
@@ -25,16 +26,19 @@ vector<int> lzw(unsigned char *chunk, int chunk_length) {
 			p = p + c;
 		}
 		else {
-			cout << p << "\t" << table[p] << "\t\t"
-				<< p + c << "\t" << code << endl;
-			output_code.push_back(table[p]);
+			// cout << p << "\t" << table[p] << "\t\t"
+			// 	<< p + c << "\t" << code << endl;
+			// lzw_codes.push_back(table[p]);
+			lzw_codes[j] = table[p];
 			table[p + c] = code;
 			code++;
+			++j;
 			p = c;
 		}
 		c = "";
 	}
-	cout << p << "\t" << table[p] << endl;
-	output_code.push_back(table[p]);
-	return output_code;
+	// cout << p << "\t" << table[p] << endl;
+	// lzw_codes.push_back(table[p]);
+	lzw_codes[j] = table[p];
+	return lzw_codes;
 }
