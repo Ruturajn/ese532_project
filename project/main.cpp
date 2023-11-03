@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
          * boundaries. Call the compression pipeline function after the buffer is
          * completely filled.
          *********************************************************************/
-		if (writer == NUM_PACKETS * MAX_CHUNK_SIZE) {
+		if (writer == NUM_PACKETS * (NUM_ELEMENTS + HEADER)) {
 			writer = 0;
             compression_pipeline(input);
 		}
