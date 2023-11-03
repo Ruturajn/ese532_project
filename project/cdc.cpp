@@ -14,6 +14,8 @@ void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
 
     uint64_t hash = hash_func(buff, 0);
 
+    vect.push_back(0);
+
     for (unsigned int i = 0; i < buff_size; i++){
         if ((hash & MODULUS_MASK) == TARGET)
                 vect.push_back(i);
