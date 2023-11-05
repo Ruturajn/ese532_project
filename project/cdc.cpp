@@ -14,13 +14,13 @@ void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
 
     uint64_t hash = hash_func(buff, 0);
 
-    vect.push_back(0);
-
-    for (unsigned int i = 0; i < buff_size; i++){
-        if ((hash & MODULUS_MASK) == TARGET)
+    for (unsigned int i = 0; i < buff_size; i++) {
+        if ((hash & MODULUS_MASK) == TARGET) {
+                cout << i << endl;
                 vect.push_back(i);
+        }
         hash = (hash * PRIME) -
-                (buff[i] * pow(PRIME, WIN_SIZE + 1)) +
-                (buff[i + WIN_SIZE] * PRIME);
+               (buff[i] * pow(PRIME, WIN_SIZE + 1)) +
+               (buff[i + WIN_SIZE] * PRIME);
     }
 }

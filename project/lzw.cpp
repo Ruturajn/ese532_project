@@ -16,7 +16,7 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
 	}
 
 	string p = "", c = "";
-	p += chunk[0];
+	p += chunk[start_idx];
 	int code = 256;
 	int j = 0;
 	// cout << "String\tlzw_codes\tAddition\n";
