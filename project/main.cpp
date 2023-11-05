@@ -25,20 +25,20 @@ unsigned char* file;
 using namespace std;
 
 void handle_input(int argc, char* argv[], int* blocksize) {
-	int x;
-	extern char *optarg;
+    int x;
+    extern char *optarg;
 
-	while ((x = getopt(argc, argv, ":b:")) != -1) {
-		switch (x) {
-		case 'b':
-			*blocksize = atoi(optarg);
-			printf("blocksize is set to %d optarg\n", *blocksize);
-			break;
-		case ':':
-			printf("-%c without parameter\n", optopt);
-			break;
-		}
-	}
+    while ((x = getopt(argc, argv, ":b:")) != -1) {
+        switch (x) {
+            case 'b':
+                *blocksize = atoi(optarg);
+                printf("blocksize is set to %d optarg\n", *blocksize);
+                break;
+            case ':':
+                printf("-%c without parameter\n", optopt);
+                break;
+        }
+    }
 }
 
 static void compression_pipeline(unsigned char *input) {
@@ -110,85 +110,86 @@ static void compression_pipeline(unsigned char *input) {
 int main(int argc, char* argv[]) {
 
     /*
-    unsigned char text1[] = {"This is November"};
-    string hash_val = "d3c5566f1395fac4fdd9d3be948e899b26834ad349b9aded0d8b7e030970f760";
-    string out = sha_256(text1, 0, strlen((const char *)text1));
-    string out1 = sha_256(text1, 0, strlen((const char *)text1));
+       unsigned char text1[] = {"This is November"};
+       string hash_val = "d3c5566f1395fac4fdd9d3be948e899b26834ad349b9aded0d8b7e030970f760";
+       string out = sha_256(text1, 0, strlen((const char *)text1));
+       string out1 = sha_256(text1, 0, strlen((const char *)text1));
 
-    if (out1 == out)
-        cout << "TEST PASSED" << endl;
-    else {
-        cout << out << endl;
-        cout << "TEST FAILED!!" << endl;
-    }*/
+       if (out1 == out)
+       cout << "TEST PASSED" << endl;
+       else {
+       cout << out << endl;
+       cout << "TEST FAILED!!" << endl;
+       }*/
 
-	stopwatch ethernet_timer;
-	unsigned char* input[NUM_PACKETS * 2];
-	int writer = 0;
-	int done = 0;
-	int length = 0;
-	int count = 0;
-	ESE532_Server server;
+    stopwatch ethernet_timer;
+    unsigned char* input[NUM_PACKETS * 2];
+    int writer = 0;
+    int done = 0;
+    int length = 0;
+    int count = 0;
+    ESE532_Server server;
 
-	// default is 2k
-	int blocksize = BLOCKSIZE;
+    // default is 2k
+    int blocksize = BLOCKSIZE;
 
-	// set blocksize if decalred through command line
-	handle_input(argc, argv, &blocksize);
+    // set blocksize if decalred through command line
+    handle_input(argc, argv, &blocksize);
 
     unsigned char *pipeline_buffer = (unsigned char *)calloc((NUM_PACKETS * 2) * (NUM_ELEMENTS + HEADER), sizeof(unsigned char));
+    CHECK_MALLOC(out_packet, "Unable to allocate memory for pipeline buffer");
 
     for (int i = 0; i < (NUM_PACKETS * 2); i++) {
         input[i] = (unsigned char *)calloc((NUM_ELEMENTS + HEADER), sizeof(unsigned char));
         CHECK_MALLOC(input, "Unable to allocate memory for input buffer");
     }
 
-	server.setup_server(blocksize);
+    server.setup_server(blocksize);
 
-	writer = pipe_depth;
+    writer = pipe_depth;
 
-	//last message
-	while (!done) {
-		// reset ring buffer
+    //last message
+    while (!done) {
+        // reset ring buffer
 
         // Perform the actual computation here. The idea is to maintain a buffer,
         // that will hold multiple packets, so that CDC can chunk at appropriate
         // boundaries. Call the compression pipeline function after the buffer is
         // completely filled.
-		if (writer == (2 * NUM_PACKETS)) {
-			writer = 0;
+        if (writer == (2 * NUM_PACKETS)) {
+            writer = 0;
             for (int i = 0; i < (2 * NUM_PACKETS); i++)
                 memcpy(pipeline_buffer + (i * (NUM_ELEMENTS + HEADER)), input[i], (NUM_ELEMENTS + HEADER));
             compression_pipeline(pipeline_buffer);
-		}
+        }
 
-		ethernet_timer.start();
-		server.get_packet(input[writer]);
-		ethernet_timer.stop();
+        ethernet_timer.start();
+        server.get_packet(input[writer]);
+        ethernet_timer.stop();
 
-		count++;
+        count++;
 
-		// get packet
-		unsigned char* buffer = input[writer];
+        // get packet
+        unsigned char* buffer = input[writer];
 
-		// decode
-		done = buffer[1] & DONE_BIT_L;
-		length = buffer[0] | (buffer[1] << 8);
-		length &= ~DONE_BIT_H;
+        // decode
+        done = buffer[1] & DONE_BIT_L;
+        length = buffer[0] | (buffer[1] << 8);
+        length &= ~DONE_BIT_H;
 
-		writer += 1;
-	}
+        writer += 1;
+    }
 
     free(pipeline_buffer);
 
     for (int i = 0; i < (2 * NUM_PACKETS); i++)
         free(input[i]);
 
-	std::cout << "--------------- Key Throughputs ---------------" << std::endl;
-	float ethernet_latency = ethernet_timer.latency() / 1000.0;
-	// float input_throughput = (bytes_written * 8 / 1000000.0) / ethernet_latency; // Mb/s
-	// std::cout << "Input Throughput to Encoder: " << input_throughput << " Mb/s."
-	// 		<< " (Latency: " << ethernet_latency << "s)." << std::endl;
+    std::cout << "--------------- Key Throughputs ---------------" << std::endl;
+    float ethernet_latency = ethernet_timer.latency() / 1000.0;
+    // float input_throughput = (bytes_written * 8 / 1000000.0) / ethernet_latency; // Mb/s
+    // std::cout << "Input Throughput to Encoder: " << input_throughput << " Mb/s."
+    // 		<< " (Latency: " << ethernet_latency << "s)." << std::endl;
 
-	return 0;
+    return 0;
 }
