@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
     handle_input(argc, argv, &blocksize);
 
     unsigned char *pipeline_buffer = (unsigned char *)calloc((NUM_PACKETS * 2) * (NUM_ELEMENTS + HEADER), sizeof(unsigned char));
-    CHECK_MALLOC(out_packet, "Unable to allocate memory for pipeline buffer");
+    CHECK_MALLOC(pipeline_buffer, "Unable to allocate memory for pipeline buffer");
 
     for (int i = 0; i < (NUM_PACKETS * 2); i++) {
         input[i] = (unsigned char *)calloc((NUM_ELEMENTS + HEADER), sizeof(unsigned char));
