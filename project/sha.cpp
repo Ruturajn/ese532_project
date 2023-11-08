@@ -15,6 +15,7 @@ string sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx,
     //     printf("%02x", hash_val[i]);
 
     // printf("\n");
+
     // char *temp = (char *)hash_val;
     // for (int i = 0; i < 32; i++)
     //     printf("%02x", hash_val[i]);

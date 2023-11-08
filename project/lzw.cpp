@@ -6,7 +6,7 @@ using namespace std;
 
 void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
          uint16_t *lzw_codes, uint32_t *code_length) {
-	cout << "Encoding\n";
+	//cout << "Encoding\n";
 	unordered_map<string, int> table;
 	int chunk_length = end_idx - start_idx;
 	for (int i = 0; i <= 255; i++) {

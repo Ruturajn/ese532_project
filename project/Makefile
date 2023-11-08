@@ -83,7 +83,7 @@ $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -I./sha256/ -o "$@"
+	g++ -g $(PROJECT_SOURCES) -I./sha256/ -o "$@"
 
 $(SERVER_EXE): $(SERVER_OBJECTS)
 	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)
