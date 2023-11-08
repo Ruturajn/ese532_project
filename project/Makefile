@@ -90,19 +90,19 @@ $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	g++ -g $(PROJECT_SOURCES) -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -I./sha256/ -o "$@"
 
 $(PROJECT_EXE_CDC_DEBUG):
-	g++ -g $(PROJECT_SOURCES) -DCDC_DEBUG -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./sha256/ -o "$@"
 
 $(PROJECT_EXE_SHA_TEST):
-	g++ -g $(PROJECT_SOURCES) -DSHA_TEST -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -DSHA_TEST -I./sha256/ -o "$@"
 
 $(PROJECT_EXE_SHA_DEBUG):
-	g++ -g $(PROJECT_SOURCES) -DSHA_DEBUG -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -DSHA_DEBUG -I./sha256/ -o "$@"
 
 $(PROJECT_EXE_MAIN_DEBUG):
-	g++ -g $(PROJECT_SOURCES) -DMAIN_DEBUG -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -DMAIN_DEBUG -I./sha256/ -o "$@"
 
 $(SERVER_EXE): $(SERVER_OBJECTS)
 	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)

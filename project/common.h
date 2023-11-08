@@ -9,7 +9,7 @@
 
 #define MAX_CHUNK_SIZE 8192
 #define WIN_SIZE 16
-#define CODE_LENGTH 13
+#define CODE_LENGTH 12
 #define MODULUS 2048
 #define MODULUS_MASK 0xFFF // This is used when performing modulus with 4096.
 #define TARGET 0
