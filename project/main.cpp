@@ -137,7 +137,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
         sha_256(input, vect[i], vect[i+1], sha_fingerprint);
         chunk_idx = dedup(sha_fingerprint);
 
-        printf("CHUNK IDX: %d\n", chunk_idx);
+        printf("CHUNK IDX: %ld\n", chunk_idx);
 
         if (chunk_idx == -1) {
             printf("UNIQUE CHUNK\n");
@@ -149,22 +149,22 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             for (int i = 0; i < out_packet_length; i++)
                 printf("%d ", out_packet[i]);
 
-           putchar('\n');
+            putchar('\n');
 
             packet_len = ((out_packet_length * 12) / 8);
             packet_len = (chunk_idx == -1 && (out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
 
             printf("CODES ARRAY LENGTH : %d\n", out_packet_length);
-            
+
             data_packet = create_packet(chunk_idx, out_packet_length, out_packet, packet_len);
 
-            header = out_packet_length << 1;
+            header = packet_len << 1;
             fwrite(&header, sizeof(uint32_t), 1, fptr_write);
 
-            printf("%x ", header);
+            printf("DATA: %x ", header);
 
             for (int i = 0; i < packet_len; i++)
-                printf("%x : %d\n", data_packet[i], i);
+                printf("%x", data_packet[i]);
 
             putchar('\n');
 
@@ -176,7 +176,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             free(out_packet);
         } else {
             header = (chunk_idx << 1) | 1;
-            printf("%x ", header);
+            printf("DATA: %x\n", header);
             fwrite(&header, sizeof(uint32_t), 1, fptr_write);
             printf("PACKET LENGTH : %d\n", 4);
         }

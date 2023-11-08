@@ -23,8 +23,10 @@ static int Read_code(void)
   int Length = CODE_LENGTH;
   for (int i = 0; i < Length; i++)
   {
-    if (Input_position % 8 == 0)
+    if (Input_position % 8 == 0) {
       Byte = Input.get();
+      printf("%x\n", Byte);
+    }
     Code = (Code << 1) | ((Byte >> (7 - Input_position % 8)) & 1);
     Input_position++;
   }
@@ -55,6 +57,7 @@ static const std::string Decompress(size_t Size)
     Code_table.push_back(Code_table[Old] + Symbol);
     Old = New;
   }
+  printf("Input position: %ld\n", Input_position);
 
   return Output;
 }
@@ -87,6 +90,7 @@ int main(int Parameter_count, char * Parameters[])
   {
     uint32_t Header;
     Input.read((char *) &Header, sizeof(int32_t));
+    printf("NEW HEADER!!\n");
     if (Input.eof())
       break;
 
