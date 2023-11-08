@@ -22,7 +22,7 @@ void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
 //     }
 
     for (unsigned int i = 0; i < buff_size; i++) {
-        if ((hash % 4096) == TARGET) {
+        if ((hash % 4096) == TARGET || ((i % 4096) == TARGET)) {
                 cout << i << endl;
                 vect.push_back(i);
         }
@@ -30,6 +30,8 @@ void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
                ((uint64_t)buff[i] * pow(PRIME, WIN_SIZE + 1)) +
                ((uint64_t)buff[i + WIN_SIZE] * PRIME);
     }
+
+    vect.push_back(buff_size-1);
 }
 
 

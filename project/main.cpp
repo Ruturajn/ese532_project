@@ -132,7 +132,7 @@ int main(int argc, char* argv[]) {
     int sum = 0;
     //ESE532_Server server;
 
-    FILE *fptr = fopen("LittlePrince.txt", "r");
+    FILE *fptr = fopen("Franklin.txt", "r");
     if (fptr == NULL) {
         printf("Error reading file!!\n");
         exit(EXIT_FAILURE);
