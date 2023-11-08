@@ -90,7 +90,7 @@ $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	g++ -O3 $(PROJECT_SOURCES) -I./sha256/ -o "$@"
+	g++ -g $(PROJECT_SOURCES) -I./sha256/ -o "$@"
 
 $(PROJECT_EXE_CDC_DEBUG):
 	g++ -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./sha256/ -o "$@"

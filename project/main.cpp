@@ -48,23 +48,28 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
 
-    if (chunk_idx != -1) {
-        // Configure the Header.
-        // Set the 0th bit of byte 4 to signify duplicate chunk.
-        // 0x00 00 00 00
-        data[0] = ((chunk_idx >> 24) & 0xFF);
-        data[1] = (chunk_idx >> 16) & 0xFF;
-        data[2] = (chunk_idx >> 8) & 0xFF;
-        data[3] = (chunk_idx & 0xFF) | 1;
-    } else {
-        data[0] = ((out_packet_length >> 24) & 0xFF);
-        data[1] = (out_packet_length >> 16) & 0xFF;
-        data[2] = (out_packet_length >> 8) & 0xFF;
-        data[3] = (out_packet_length & 0xFF);
-    }
+    // 011A
+    // 0000 0000 0000 0000 0000 0000 0000 0000
+    // 0000 0000 0000 0000 0000 0001 0001 1010
+    // 0 0 0 
+
+    // if (chunk_idx != -1) {
+    //     // Configure the Header.
+    //     // Set the 0th bit of byte 4 to signify duplicate chunk.
+    //     // 0x00 00 00 00
+    //     data[3] = (((chunk_idx >> 24) & 0xFF) << 1) | 1;
+    //     data[2] = (chunk_idx >> 16) & 0xFF;
+    //     data[1] = (chunk_idx >> 8) & 0xFF;
+    //     data[0] = (chunk_idx & 0xFF);
+    // } else {
+    //     data[3] = ((out_packet_length >> 24) & 0xFF) << 1;
+    //     data[2] = (out_packet_length >> 16) & 0xFF;
+    //     data[1] = (out_packet_length >> 8) & 0xFF;
+    //     data[0] = (out_packet_length & 0xFF) << 1;
+    // }
 
     if (chunk_idx == -1) {
-        int data_idx = 4;
+        int data_idx = 0;
         uint16_t current_val = 0;
         int bits_left = 0;
         int current_val_bits_left = 0;
@@ -124,6 +129,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
     uint16_t *out_packet = NULL;
     uint32_t packet_len = 0;
     unsigned char *data_packet = NULL;
+    uint32_t header = 0;
 
     cdc(input, length_sum, vect);
 
@@ -131,27 +137,49 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
         sha_256(input, vect[i], vect[i+1], sha_fingerprint);
         chunk_idx = dedup(sha_fingerprint);
 
-        cout << chunk_idx << endl;
+        printf("CHUNK IDX: %d\n", chunk_idx);
 
         if (chunk_idx == -1) {
-            printf("CALLED\n");
+            printf("UNIQUE CHUNK\n");
             out_packet = (uint16_t *)calloc(MAX_CHUNK_SIZE, sizeof(uint16_t));
             CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW codes");
             lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length);
-        }
 
-        packet_len = (4 + ((out_packet_length * 12) / 8));
-        packet_len = (chunk_idx == -1 && (out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
-        printf("%d\n", packet_len);
-        data_packet = create_packet(chunk_idx, out_packet_length, out_packet, packet_len);
+            printf("LZW CODES\n");
+            for (int i = 0; i < out_packet_length; i++)
+                printf("%d ", out_packet[i]);
 
-        // Write data packet in file.
-        fwrite(data_packet, sizeof(unsigned char), packet_len, fptr_write);
+           putchar('\n');
 
-        if (chunk_idx == -1)
+            packet_len = ((out_packet_length * 12) / 8);
+            packet_len = (chunk_idx == -1 && (out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
+
+            printf("CODES ARRAY LENGTH : %d\n", out_packet_length);
+            
+            data_packet = create_packet(chunk_idx, out_packet_length, out_packet, packet_len);
+
+            header = out_packet_length << 1;
+            fwrite(&header, sizeof(uint32_t), 1, fptr_write);
+
+            printf("%x ", header);
+
+            for (int i = 0; i < packet_len; i++)
+                printf("%x : %d\n", data_packet[i], i);
+
+            putchar('\n');
+
+            // Write data packet in file.
+            fwrite(data_packet, sizeof(unsigned char), packet_len, fptr_write);
+            printf("PACKET LENGTH : %d\n", packet_len);
+
+            free(data_packet);
             free(out_packet);
-
-        free(data_packet);
+        } else {
+            header = (chunk_idx << 1) | 1;
+            printf("%x ", header);
+            fwrite(&header, sizeof(uint32_t), 1, fptr_write);
+            printf("PACKET LENGTH : %d\n", 4);
+        }
     }
 }
 
@@ -180,7 +208,7 @@ int main(int argc, char* argv[]) {
     int sum = 0;
     //ESE532_Server server;
 
-    FILE *fptr = fopen("Franklin.txt", "r");
+    FILE *fptr = fopen("LittlePrince.txt", "r");
     if (fptr == NULL) {
         printf("Error reading file!!\n");
         exit(EXIT_FAILURE);
