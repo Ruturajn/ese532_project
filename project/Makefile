@@ -64,7 +64,11 @@ DECODER_EXE = decoder
 
 PROJECT_SOURCES = cdc.cpp sha.cpp dedup.cpp lzw.cpp main.cpp Server/server.cpp sha256/sha256.cpp
 PROJECT_OBJECTS =$(PROJECT_SOURCES:.cpp=.o)
-PROJECT_EXE = encoder
+PROJECT_EXE = compress
+PROJECT_EXE_CDC_DEBUG = encdc_debug
+PROJECT_EXE_SHA_TEST = ensha_test
+PROJECT_EXE_SHA_DEBUG = ensha_debug
+PROJECT_EXE_MAIN_DEBUG = enmain_debug
 
 # CPU_SOURCES = cpu/Host.cpp ../../common/EventTimer.cpp ../../common/Utilities.cpp
 # CPU_OBJECTS=$(CPU_SOURCES:.cpp=.o)
@@ -76,14 +80,29 @@ PROJECT_EXE = encoder
 # $(CPU_EXE): $(CPU_OBJECTS)
 # 	$(HOST_CXX) -I./fpga/hls/ -o "$@" $(+) $(LDFLAGS)
 all: $(CLIENT_EXE) $(SERVER_EXE) $(DECODER_EXE) $(PROJECT_EXE)
-
 project: $(PROJECT_EXE)
+proj_main_debug: $(PROJECT_EXE_MAIN_DEBUG)
+proj_sha_test: $(PROJECT_EXE_SHA_TEST)
+proj_sha_debug: $(PROJECT_EXE_SHA_DEBUG)
+proj_cdc_debug: $(PROJECT_EXE_CDC_DEBUG)
 
 $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
 	g++ -g $(PROJECT_SOURCES) -I./sha256/ -o "$@"
+
+$(PROJECT_EXE_CDC_DEBUG):
+	g++ -g $(PROJECT_SOURCES) -DCDC_DEBUG -I./sha256/ -o "$@"
+
+$(PROJECT_EXE_SHA_TEST):
+	g++ -g $(PROJECT_SOURCES) -DSHA_TEST -I./sha256/ -o "$@"
+
+$(PROJECT_EXE_SHA_DEBUG):
+	g++ -g $(PROJECT_SOURCES) -DSHA_DEBUG -I./sha256/ -o "$@"
+
+$(PROJECT_EXE_MAIN_DEBUG):
+	g++ -g $(PROJECT_SOURCES) -DMAIN_DEBUG -I./sha256/ -o "$@"
 
 $(SERVER_EXE): $(SERVER_OBJECTS)
 	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)
@@ -106,7 +125,7 @@ $(DECODER_EXE): $(DECODER_OBJECTS)
 .NOTPARALLEL: clean
 
 clean:
-	-$(RM) $(SERVER_EXE) $(SERVER_OBJECTS) $(DECODER_EXE) $(DECODER_OBJECTS) $(CLIENT_EXE) $(PROJECT_OBJECTS) $(PROJECT_EXE)
+	-$(RM) $(SERVER_EXE) $(SERVER_OBJECTS) $(DECODER_EXE) $(DECODER_OBJECTS) $(CLIENT_EXE) $(PROJECT_OBJECTS) $(PROJECT_EXE) $(PROJECT_EXE_CDC_DEBUG) $(PROJECT_EXE_MAIN_DEBUG) $(PROJECT_EXE_SHA_TEST) $(PROJECT_EXE_SHA_DEBUG)
 
 # clean-cpu:
 # 	-$(RM) $(CPU_EXE) $(CPU_OBJECTS) 

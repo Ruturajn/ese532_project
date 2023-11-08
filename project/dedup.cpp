@@ -1,16 +1,16 @@
 #include "common.h"
 #include <iostream>
 #include <cstdlib>
-#include <unordered_map>
+#include <map>
 #include <stdbool.h>
 
 using namespace std;
 
 // Return -1 on failure.
-uint32_t dedup(string sha_fingerprint) {
+int64_t dedup(vector<unsigned char> sha_fingerprint) {
 
-    static unordered_map<string, uint64_t> sha_chunk_id_map;
-    static uint32_t chunk_id = 0;
+    static map<vector<unsigned char>, int64_t> sha_chunk_id_map;
+    static int64_t chunk_id = 0;
 
     bool found = (sha_chunk_id_map.find(sha_fingerprint) ==
                   sha_chunk_id_map.end() ? false : true);

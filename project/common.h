@@ -10,6 +10,7 @@
 #define MAX_CHUNK_SIZE 8192
 #define WIN_SIZE 16
 #define CODE_LENGTH 13
+#define MODULUS 2048
 #define MODULUS_MASK 0xFFF // This is used when performing modulus with 4096.
 #define TARGET 0
 #define PRIME 3
@@ -24,9 +25,10 @@ using namespace std;
 
 void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect);
 
-string sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx, uint32_t chunk_end_idx);
+void sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx,
+             uint32_t chunk_end_idx, vector<unsigned char>&sha_fingerprint);
 
-uint32_t dedup(string sha_fingerprint);
+int64_t dedup(vector<unsigned char> sha_fingerprint);
 
 void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint16_t *lzw_codes,
          uint32_t *code_length);
