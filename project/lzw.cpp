@@ -8,7 +8,6 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
          uint16_t *lzw_codes, uint32_t *code_length) {
 	//cout << "Encoding\n";
 	unordered_map<string, int> table;
-	int chunk_length = end_idx - start_idx;
 	for (int i = 0; i <= 255; i++) {
 		string ch = "";
 		ch += char(i);
@@ -20,8 +19,8 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
 	int code = 256;
 	int j = 0;
 	// cout << "String\tlzw_codes\tAddition\n";
-	for (int i = 0; i < chunk_length; i++) {
-		if (i != chunk_length - 1)
+	for (int i = start_idx; i < end_idx; i++) {
+		if (i != end_idx - 1)
 			c += chunk[i + 1];
 		if (table.find(p + c) != table.end()) {
 			p = p + c;

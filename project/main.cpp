@@ -123,62 +123,67 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
 
 static void compression_pipeline(unsigned char *input, int length_sum, FILE *fptr_write) {
     vector<uint32_t> vect;
-    vector<unsigned char> sha_fingerprint(32);
+    string sha_fingerprint;
     int64_t chunk_idx = 0;
     uint32_t out_packet_length = 0;
     uint16_t *out_packet = NULL;
     uint32_t packet_len = 0;
-    unsigned char *data_packet = NULL;
     uint32_t header = 0;
 
     cdc(input, length_sum, vect);
 
     for (int i = 0; i < vect.size() - 1; i++) {
-        sha_256(input, vect[i], vect[i+1], sha_fingerprint);
+        sha_fingerprint = sha_256(input, vect[i], vect[i+1]);
         chunk_idx = dedup(sha_fingerprint);
 
+#ifdef MAIN_DEBUG
         printf("CHUNK IDX: %ld\n", chunk_idx);
+#endif
 
         if (chunk_idx == -1) {
+#ifdef MAIN_DEBUG
             printf("UNIQUE CHUNK\n");
+#endif
             out_packet = (uint16_t *)calloc(MAX_CHUNK_SIZE, sizeof(uint16_t));
             CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW codes");
             lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length);
 
+#ifdef MAIN_DEBUG
             printf("LZW CODES\n");
             for (int i = 0; i < out_packet_length; i++)
                 printf("%d ", out_packet[i]);
 
             putchar('\n');
+#endif
 
             packet_len = ((out_packet_length * 12) / 8);
             packet_len = (chunk_idx == -1 && (out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
 
-            printf("CODES ARRAY LENGTH : %d\n", out_packet_length);
+            /* printf("CODES ARRAY LENGTH : %d\n", out_packet_length); */
 
-            data_packet = create_packet(chunk_idx, out_packet_length, out_packet, packet_len);
+            unsigned char *data_packet = create_packet(chunk_idx, out_packet_length, out_packet, packet_len);
 
             header = packet_len << 1;
             fwrite(&header, sizeof(uint32_t), 1, fptr_write);
 
-            printf("DATA: %x ", header);
+            /* printf("DATA: %x ", header); */
 
-            for (int i = 0; i < packet_len; i++)
-                printf("%x", data_packet[i]);
+            /* for (int i = 0; i < packet_len; i++) */
+            /*     printf("%x", data_packet[i]); */
 
-            putchar('\n');
+            /* putchar('\n'); */
 
             // Write data packet in file.
             fwrite(data_packet, sizeof(unsigned char), packet_len, fptr_write);
-            printf("PACKET LENGTH : %d\n", packet_len);
+            /* printf("PACKET LENGTH : %d\n", packet_len); */
 
             free(data_packet);
             free(out_packet);
         } else {
             header = (chunk_idx << 1) | 1;
-            printf("DATA: %x\n", header);
+            /* printf("DATA: %x\n", header); */
             fwrite(&header, sizeof(uint32_t), 1, fptr_write);
-            printf("PACKET LENGTH : %d\n", 4);
+            /* printf("PACKET LENGTH : %d\n", 4); */
         }
     }
 }
