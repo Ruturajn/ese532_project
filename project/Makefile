@@ -54,9 +54,9 @@ VPP_OPTS = --target hw
 CLIENT_SOURCES = Client/client.cpp
 CLIENT_EXE = client
 
-SERVER_SOURCES = Server/encoder.cpp Server/server.cpp
-SERVER_OBJECTS =$(SERVER_SOURCES:.cpp=.o)
-SERVER_EXE = encoder
+# SERVER_SOURCES = Server/encoder.cpp Server/server.cpp
+# SERVER_OBJECTS =$(SERVER_SOURCES:.cpp=.o)
+# SERVER_EXE = encoder
 
 DECODER_SOURCES = Decoder/Decoder.cpp
 DECODER_OBJECTS =$(DECODER_SOURCES:.cpp=.o)
@@ -64,7 +64,7 @@ DECODER_EXE = decoder
 
 PROJECT_SOURCES = cdc.cpp sha.cpp dedup.cpp lzw.cpp main.cpp Server/server.cpp sha256/sha256.cpp
 PROJECT_OBJECTS =$(PROJECT_SOURCES:.cpp=.o)
-PROJECT_EXE = compress
+PROJECT_EXE = encoder
 PROJECT_EXE_CDC_DEBUG = encdc_debug
 PROJECT_EXE_SHA_TEST = ensha_test
 PROJECT_EXE_SHA_DEBUG = ensha_debug
@@ -80,7 +80,6 @@ PROJECT_EXE_MAIN_DEBUG = enmain_debug
 # $(CPU_EXE): $(CPU_OBJECTS)
 # 	$(HOST_CXX) -I./fpga/hls/ -o "$@" $(+) $(LDFLAGS)
 all: $(CLIENT_EXE) $(SERVER_EXE) $(DECODER_EXE) $(PROJECT_EXE)
-project: $(PROJECT_EXE)
 proj_main_debug: $(PROJECT_EXE_MAIN_DEBUG)
 proj_sha_test: $(PROJECT_EXE_SHA_TEST)
 proj_sha_debug: $(PROJECT_EXE_SHA_DEBUG)
@@ -90,7 +89,7 @@ $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	g++ -g $(PROJECT_SOURCES) -I./sha256/ -o "$@"
+	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -I./sha256/ -o "$@"
 
 $(PROJECT_EXE_CDC_DEBUG):
 	g++ -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./sha256/ -o "$@"

@@ -43,30 +43,8 @@ void handle_input(int argc, char* argv[], int* blocksize) {
 
 static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_length, uint16_t *out_packet,
                                     uint32_t packet_len) {
-    // Send out the data packet.
-    // | 31:1  [compressed chunk length in bytes or chunk index] | 0 | 9 byte data |
     unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
-
-    // 011A
-    // 0000 0000 0000 0000 0000 0000 0000 0000
-    // 0000 0000 0000 0000 0000 0001 0001 1010
-    // 0 0 0 
-
-    // if (chunk_idx != -1) {
-    //     // Configure the Header.
-    //     // Set the 0th bit of byte 4 to signify duplicate chunk.
-    //     // 0x00 00 00 00
-    //     data[3] = (((chunk_idx >> 24) & 0xFF) << 1) | 1;
-    //     data[2] = (chunk_idx >> 16) & 0xFF;
-    //     data[1] = (chunk_idx >> 8) & 0xFF;
-    //     data[0] = (chunk_idx & 0xFF);
-    // } else {
-    //     data[3] = ((out_packet_length >> 24) & 0xFF) << 1;
-    //     data[2] = (out_packet_length >> 16) & 0xFF;
-    //     data[1] = (out_packet_length >> 8) & 0xFF;
-    //     data[0] = (out_packet_length & 0xFF) << 1;
-    // }
 
     if (chunk_idx == -1) {
         int data_idx = 0;
@@ -174,6 +152,8 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             /* putchar('\n'); */
 
             // Write data packet in file.
+            // Send out the data packet.
+            // | 31:1  [compressed chunk length in bytes or chunk index] | 0 | 9 byte data |
             fwrite(data_packet, sizeof(unsigned char), packet_len, fptr_write);
             /* printf("PACKET LENGTH : %d\n", packet_len); */
 
@@ -213,7 +193,7 @@ int main(int argc, char* argv[]) {
     int sum = 0;
     //ESE532_Server server;
 
-    FILE *fptr = fopen("LittlePrince.txt", "r");
+    FILE *fptr = fopen("Franklin.txt", "r");
     if (fptr == NULL) {
         printf("Error reading file!!\n");
         exit(EXIT_FAILURE);

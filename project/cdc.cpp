@@ -15,7 +15,7 @@ void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
     uint64_t hash = hash_func(buff, 0);
 
     for (unsigned int i = 0; i < buff_size; i++) {
-        if ((hash % MODULUS) == TARGET || ((i % MODULUS) == TARGET)) {
+        if ((hash & MODULUS_MASK) == TARGET || ((i & MODULUS_MASK) == TARGET)) {
 #ifdef CDC_DEBUG
                 cout << i << endl;
 #endif
@@ -26,7 +26,7 @@ void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
                ((uint64_t)buff[i + WIN_SIZE] * PRIME);
     }
 
-    vect.push_back(buff_size-1);
+    vect.push_back(buff_size);
 #ifdef CDC_DEBUG
                 cout << buff_size - 1 << endl;
 #endif
