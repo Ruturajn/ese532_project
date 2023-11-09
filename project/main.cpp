@@ -189,15 +189,15 @@ int main(int argc, char* argv[]) {
     int writer = 0;
     int done = 0;
     int length = -1;
-    int count = 0;
+    uint64_t offset = 0;
     int sum = 0;
-    //ESE532_Server server;
+    ESE532_Server server;
 
-    FILE *fptr = fopen("Franklin.txt", "r");
-    if (fptr == NULL) {
-        printf("Error reading file!!\n");
-        exit(EXIT_FAILURE);
-    }
+    // FILE *fptr = fopen("Franklin.txt", "r");
+    // if (fptr == NULL) {
+    //     printf("Error reading file!!\n");
+    //     exit(EXIT_FAILURE);
+    // }
 
     FILE *fptr_write = fopen("compressed_file.bin", "wb");
     if (fptr_write == NULL) {
@@ -219,28 +219,30 @@ int main(int argc, char* argv[]) {
         CHECK_MALLOC(input, "Unable to allocate memory for input buffer");
     }
 
-    // server.setup_server(blocksize);
+    server.setup_server(blocksize);
 
     //writer = pipe_depth;
     writer = 0;
 
     //last message
-    while (length != 0) {
+    while (!done) {
         // reset ring buffer
 
-        // ethernet_timer.start();
-        // server.get_packet(input[writer]);
-        // ethernet_timer.stop();
+        ethernet_timer.start();
+        server.get_packet(input[writer]);
+        ethernet_timer.stop();
 
-        length = fread(input[writer], sizeof(unsigned char), 1024, fptr);
+        // length = fread(input[writer], sizeof(unsigned char), 1024, fptr);
 
         // get packet
         unsigned char* buffer = input[writer];
 
         // decode
-        // done = buffer[1] & DONE_BIT_L;
-        // length = buffer[0] | (buffer[1] << 8);
-        // length &= ~DONE_BIT_H;
+        done = buffer[1] & DONE_BIT_L;
+        length = buffer[0] | (buffer[1] << 8);
+        length &= ~DONE_BIT_H;
+
+        offset += length;
 
 #ifdef MAIN_DEBUG
         printf("Length - %d\n",length);
@@ -254,9 +256,9 @@ int main(int argc, char* argv[]) {
         // boundaries. Call the compression pipeline function after the buffer is
         // completely filled.
         if (length != 0)
-            memcpy(pipeline_buffer + (writer * 1024), input[writer], length);
+            memcpy(pipeline_buffer + (writer * 1024), input[writer] + 2, length);
 
-        if (writer == (NUM_PACKETS - 1) || (length < 1024 && length > 0)) {
+        if (writer == (NUM_PACKETS - 1) || (length < 1024 && length > 0) || done == 1) {
 #ifdef MAIN_DEBUG
             printf("BUFFER\n");
             for(int d = 0; d < sum ; d++){
@@ -278,7 +280,7 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < (NUM_PACKETS); i++)
         free(input[i]);
 
-    fclose(fptr);
+    // fclose(fptr);
     fclose(fptr_write);
 
     std::cout << "--------------- Key Throughputs ---------------" << std::endl;
@@ -286,6 +288,7 @@ int main(int argc, char* argv[]) {
     // float input_throughput = (bytes_written * 8 / 1000000.0) / ethernet_latency; // Mb/s
     // std::cout << "Input Throughput to Encoder: " << input_throughput << " Mb/s."
     // 		<< " (Latency: " << ethernet_latency << "s)." << std::endl;
+    cout << "Bytes Received: " << offset << endl;
 
     return 0;
 }
