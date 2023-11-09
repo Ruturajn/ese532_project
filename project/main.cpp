@@ -24,15 +24,19 @@ unsigned char* file;
 
 using namespace std;
 
-void handle_input(int argc, char* argv[], int* blocksize) {
+void handle_input(int argc, char* argv[], int* blocksize, char **filename) {
     int x;
     extern char *optarg;
 
-    while ((x = getopt(argc, argv, ":b:")) != -1) {
+    while ((x = getopt(argc, argv, ":b:f:")) != -1) {
         switch (x) {
             case 'b':
                 *blocksize = atoi(optarg);
                 printf("blocksize is set to %d optarg\n", *blocksize);
+                break;
+            case 'f':
+                *filename = optarg;
+                printf("filename is %s\n", *filename);
                 break;
             case ':':
                 printf("-%c without parameter\n", optopt);
@@ -42,60 +46,58 @@ void handle_input(int argc, char* argv[], int* blocksize) {
 }
 
 static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_length, uint16_t *out_packet,
-                                    uint32_t packet_len) {
+                                uint32_t packet_len) {
     unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
 
-    if (chunk_idx == -1) {
-        int data_idx = 0;
-        uint16_t current_val = 0;
-        int bits_left = 0;
-        int current_val_bits_left = 0;
+    int data_idx = 0;
+    uint16_t current_val = 0;
+    int bits_left = 0;
+    int current_val_bits_left = 0;
 
-        for (int i = 0; i < out_packet_length; i++) {
-            current_val = out_packet[i];
-            current_val_bits_left = CODE_LENGTH;
+    for (int i = 0; i < out_packet_length; i++) {
+        current_val = out_packet[i];
+        current_val_bits_left = CODE_LENGTH;
 
-            if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
-                // 0000| 0101 0101 0101
-                // 0000| 0000 0000 1111
-                // 0000| 0000 0000 0101
-                // 0000| 0000 0101 0000
-                data[data_idx] = (current_val >> 4) & 0xFF;
-                bits_left = 0;
-                current_val_bits_left = 4;
-                data_idx += 1;
-            }
-
-            if (bits_left == 0 && current_val_bits_left == 4) {
-                if (data_idx < packet_len) {
-                    data[data_idx] = (current_val & 0x0F) << 4;
-                    bits_left = 4;
-                    current_val_bits_left = 0;
-                    continue;
-                } else
-                    break;
-            }
-
-            if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
-                data[data_idx] |= ((current_val >> 8) & 0x0F);
-                bits_left = 0;
-                data_idx += 1;
-                current_val_bits_left = 8;
-            }
-
-            if (bits_left == 0 && current_val_bits_left == 8) {
-                if (data_idx < packet_len) {
-                    data[data_idx] = ((current_val) & 0xFF);
-                    bits_left = 0;
-                    data_idx += 1;
-                    current_val_bits_left = 0;
-                    continue;
-                } else
-                    break;
-            }
+        if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
+            // 0000| 0101 0101 0101
+            // 0000| 0000 0000 1111
+            // 0000| 0000 0000 0101
+            // 0000| 0000 0101 0000
+            data[data_idx] = (current_val >> 4) & 0xFF;
+            bits_left = 0;
+            current_val_bits_left = 4;
+            data_idx += 1;
         }
-    } 
+
+        if (bits_left == 0 && current_val_bits_left == 4) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x0F) << 4;
+                bits_left = 4;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 8) & 0x0F);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 8;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 8) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+    }
     return data;
 }
 
@@ -203,17 +205,18 @@ int main(int argc, char* argv[]) {
     //     exit(EXIT_FAILURE);
     // }
 
-    FILE *fptr_write = fopen("compressed_file.bin", "wb");
+    // default is 1k
+    int blocksize = BLOCKSIZE;
+    char* file = strdup("compressed_file.bin");
+
+    // set blocksize if decalred through command line
+    handle_input(argc, argv, &blocksize, &file);
+
+    FILE *fptr_write = fopen(file, "wb");
     if (fptr_write == NULL) {
         printf("Error creating file for compressed output!!\n");
         exit(EXIT_FAILURE);
     }
-
-    // default is 1k
-    int blocksize = BLOCKSIZE;
-
-    // set blocksize if decalred through command line
-    handle_input(argc, argv, &blocksize);
 
     unsigned char *pipeline_buffer = (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
     CHECK_MALLOC(pipeline_buffer, "Unable to allocate memory for pipeline buffer");
@@ -291,7 +294,7 @@ int main(int argc, char* argv[]) {
     float ethernet_latency = ethernet_timer.latency() / 1000.0;
     float throughput = (bytes_written * 8 / 1000000.0) / ethernet_latency; // Mb/s
     std::cout << "Throughput of the Encoder: " << throughput << " Mb/s."
-    		<< " (Ethernet Latency: " << ethernet_latency << "s)." << std::endl;
+            << " (Ethernet Latency: " << ethernet_latency << "s)." << std::endl;
     cout << "Bytes Received: " << offset << endl;
 
     return 0;
