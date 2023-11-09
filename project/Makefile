@@ -62,7 +62,7 @@ DECODER_SOURCES = Decoder/Decoder.cpp
 DECODER_OBJECTS =$(DECODER_SOURCES:.cpp=.o)
 DECODER_EXE = decoder
 
-PROJECT_SOURCES = cdc.cpp sha.cpp dedup.cpp lzw.cpp main.cpp Server/server.cpp sha256/sha256.cpp
+PROJECT_SOURCES = Encoder/cdc.cpp Encoder/sha.cpp Encoder/dedup.cpp Encoder/lzw.cpp Encoder/main.cpp Server/server.cpp Encoder/sha256/sha256.cpp
 PROJECT_OBJECTS =$(PROJECT_SOURCES:.cpp=.o)
 PROJECT_EXE = encoder
 PROJECT_EXE_CDC_DEBUG = encdc_debug
@@ -89,19 +89,19 @@ $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -I./sha256/ -o "$@"
+	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_CDC_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_SHA_TEST):
-	g++ -O3 $(PROJECT_SOURCES) -DSHA_TEST -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -DSHA_TEST -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_SHA_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DSHA_DEBUG -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -DSHA_DEBUG -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_MAIN_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DMAIN_DEBUG -I./sha256/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -DMAIN_DEBUG -I./Encoder/ -o "$@"
 
 $(SERVER_EXE): $(SERVER_OBJECTS)
 	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)

@@ -1,18 +1,18 @@
 #include "common.h"
-#include "Server/encoder.h"
+#include "../Server/encoder.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <iostream>
-#include "Server/server.h"
+#include "../Server/server.h"
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include "Server/stopwatch.h"
+#include "../Server/stopwatch.h"
 
 #define NUM_PACKETS 16
 #define pipe_depth 4
