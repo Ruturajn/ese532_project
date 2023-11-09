@@ -99,7 +99,7 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-static void compression_pipeline(unsigned char *input, int length_sum, FILE *fptr_write) {
+static size_t compression_pipeline(unsigned char *input, int length_sum, FILE *fptr_write) {
     vector<uint32_t> vect;
     string sha_fingerprint;
     int64_t chunk_idx = 0;
@@ -107,6 +107,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
     uint16_t *out_packet = NULL;
     uint32_t packet_len = 0;
     uint32_t header = 0;
+    size_t bytes_written = 0;
 
     cdc(input, length_sum, vect);
 
@@ -142,7 +143,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             unsigned char *data_packet = create_packet(chunk_idx, out_packet_length, out_packet, packet_len);
 
             header = packet_len << 1;
-            fwrite(&header, sizeof(uint32_t), 1, fptr_write);
+            bytes_written += fwrite(&header, sizeof(uint32_t), 1, fptr_write);
 
             /* printf("DATA: %x ", header); */
 
@@ -154,7 +155,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             // Write data packet in file.
             // Send out the data packet.
             // | 31:1  [compressed chunk length in bytes or chunk index] | 0 | 9 byte data |
-            fwrite(data_packet, sizeof(unsigned char), packet_len, fptr_write);
+            bytes_written += fwrite(data_packet, sizeof(unsigned char), packet_len, fptr_write);
             /* printf("PACKET LENGTH : %d\n", packet_len); */
 
             free(data_packet);
@@ -162,10 +163,12 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
         } else {
             header = (chunk_idx << 1) | 1;
             /* printf("DATA: %x\n", header); */
-            fwrite(&header, sizeof(uint32_t), 1, fptr_write);
+            bytes_written += fwrite(&header, sizeof(uint32_t), 1, fptr_write);
             /* printf("PACKET LENGTH : %d\n", 4); */
         }
     }
+
+    return bytes_written;
 }
 
 int main(int argc, char* argv[]) {
@@ -192,6 +195,7 @@ int main(int argc, char* argv[]) {
     uint64_t offset = 0;
     int sum = 0;
     ESE532_Server server;
+    size_t bytes_written = 0;
 
     // FILE *fptr = fopen("Franklin.txt", "r");
     // if (fptr == NULL) {
@@ -268,7 +272,7 @@ int main(int argc, char* argv[]) {
             printf("\nSum when called - %d\n", sum);
 #endif
 
-            compression_pipeline(pipeline_buffer, sum, fptr_write);
+            bytes_written += compression_pipeline(pipeline_buffer, sum, fptr_write);
             writer = 0;
             sum = 0;
         } else
@@ -285,9 +289,9 @@ int main(int argc, char* argv[]) {
 
     std::cout << "--------------- Key Throughputs ---------------" << std::endl;
     float ethernet_latency = ethernet_timer.latency() / 1000.0;
-    // float input_throughput = (bytes_written * 8 / 1000000.0) / ethernet_latency; // Mb/s
-    // std::cout << "Input Throughput to Encoder: " << input_throughput << " Mb/s."
-    // 		<< " (Latency: " << ethernet_latency << "s)." << std::endl;
+    float throughput = (bytes_written * 8 / 1000000.0) / ethernet_latency; // Mb/s
+    std::cout << "Throughput of the Encoder: " << throughput << " Mb/s."
+    		<< " (Ethernet Latency: " << ethernet_latency << "s)." << std::endl;
     cout << "Bytes Received: " << offset << endl;
 
     return 0;
