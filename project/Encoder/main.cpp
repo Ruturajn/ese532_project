@@ -19,10 +19,10 @@
 #define DONE_BIT_L (1 << 7)
 #define DONE_BIT_H (1 << 15)
 
-int offset = 0;
-unsigned char* file;
-
 using namespace std;
+
+uint64_t dedup_bytes = 0;
+uint64_t lzw_bytes = 0;
 
 void handle_input(int argc, char* argv[], int* blocksize, char **filename) {
     int x;
@@ -145,6 +145,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
 
             header = packet_len << 1;
             fwrite(&header, sizeof(uint32_t), 1, fptr_write);
+            lzw_bytes += 4;
 
             /* printf("DATA: %x ", header); */
 
@@ -157,6 +158,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             // Send out the data packet.
             // | 31:1  [compressed chunk length in bytes or chunk index] | 0 | 9 byte data |
             fwrite(data_packet, sizeof(unsigned char), packet_len, fptr_write);
+            lzw_bytes += packet_len;
             /* printf("PACKET LENGTH : %d\n", packet_len); */
 
             free(data_packet);
@@ -165,6 +167,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             header = (chunk_idx << 1) | 1;
             /* printf("DATA: %x\n", header); */
             fwrite(&header, sizeof(uint32_t), 1, fptr_write);
+            dedup_bytes += 4;
             /* printf("PACKET LENGTH : %d\n", 4); */
         }
     }
@@ -299,6 +302,8 @@ int main(int argc, char* argv[]) {
     cout << "Bytes Received: " << offset << "B." << endl;
     cout << "Latency for Compression: " << compression_latency << "s." << endl;
     cout << "Application Throughput: " << throughput << "Mb/s." << endl;
+    cout << "Bytes Contributed by Deduplication: " << dedup_bytes << "B." << endl;
+    cout << "Bytes Contributed by LZW: " << lzw_bytes << "B." << endl;
 
     return 0;
 }

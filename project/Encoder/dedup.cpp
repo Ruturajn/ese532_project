@@ -28,8 +28,8 @@ int64_t dedup(string sha_fingerprint) {
     // Perform lookup in map here.
     if (!found) {
         // Insert into map before calling LZW.
-        ++chunk_id;
         sha_chunk_id_map[sha_fingerprint] = chunk_id;
+        ++chunk_id;
         return -1;
     } else
         return sha_chunk_id_map[sha_fingerprint];

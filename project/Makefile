@@ -92,16 +92,16 @@ $(PROJECT_EXE):
 	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_CDC_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./Encoder/ -o "$@"
+	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_SHA_TEST):
-	g++ -O3 $(PROJECT_SOURCES) -DSHA_TEST -I./Encoder/ -o "$@"
+	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -DSHA_TEST -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_SHA_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DSHA_DEBUG -I./Encoder/ -o "$@"
+	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -DSHA_DEBUG -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_MAIN_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DMAIN_DEBUG -I./Encoder/ -o "$@"
+	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -DMAIN_DEBUG -I./Encoder/ -o "$@"
 
 $(SERVER_EXE): $(SERVER_OBJECTS)
 	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)
@@ -109,7 +109,7 @@ $(SERVER_EXE): $(SERVER_OBJECTS)
 	# -@$(VPP) --package --config fpga/package.cfg --package.sd_file "$@" --package.kernel_image $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/image/image.ub --package.rootfs $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/rootfs/rootfs.ext4 $(XCLBIN)
 
 $(DECODER_EXE): $(DECODER_OBJECTS)
-	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)
+	$(HOST_CXX) -g -o "$@" $(+) $(LDFLAGS)
 
 .cpp.o:
 	$(HOST_CXX) $(CXXFLAGS) -I./server -o "$@" "$<"
