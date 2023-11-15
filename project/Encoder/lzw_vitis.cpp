@@ -91,23 +91,24 @@ void hash_insert(unsigned long (*hash_table)[2], unsigned int key, unsigned int 
 
     unsigned int hash_val = my_hash(key);
 
-    unsigned long lookup = hash_table[hash_val][0];
+    unsigned long *lookup_ptr = hash_table[hash_val];
+    unsigned long lookup = lookup_ptr[0];
     unsigned int valid = (lookup >> (20 + 12))&0x1;
 
     if(valid)
     {
-        lookup = hash_table[hash_val][1];
+        lookup = lookup_ptr[1];
         valid = (lookup >> (20 + 12))&0x1;
         if (valid) {
             *collision = 1;
             return;
         }
-		hash_table[hash_val][1] = (1UL << (20 + 12)) | (value << 20) | key;
+		lookup_ptr[1] = (1UL << (20 + 12)) | (value << 20) | key;
 		*collision = 0;
 		return;
     }
 
-	hash_table[hash_val][0] = (1UL << (20 + 12)) | (value << 20) | key;
+	lookup_ptr[0] = (1UL << (20 + 12)) | (value << 20) | key;
 	*collision = 0;
 }
 
@@ -181,7 +182,10 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
 		 unsigned int *associative_mem) {
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY][2];
+#pragma HLS array_partition block factor=2 dim=1
     assoc_mem my_assoc_mem;
+
+    *failure = 0;
 
     // make sure the memories are clear
     LOOP1: for(int i = 0; i < CAPACITY; i++)
@@ -213,17 +217,13 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
     unsigned char next_char = 0;
 	uint32_t j = 0;
 
-    int i = start_idx;
-    LOOP4: while(i < end_idx)
+    LOOP4: for (int i = start_idx; i < end_idx - 1; i++)
     {
-        if(i + 1 == end_idx)
-        {
-			lzw_codes[j] = prefix_code;
-			*code_length = j + 1;
-            break;
-        }
+//        if(i != end_idx - 1)
+//        {
+//        	next_char = chunk[i + 1];
+//        }
         next_char = chunk[i + 1];
-
         bool hit = 0;
         concat_val = (prefix_code << 8) + next_char;
         lookup(hash_table, &my_assoc_mem, concat_val, &hit, &code);
@@ -237,7 +237,7 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
             {
 				printf("FAILED TO INSERT!!\n");
             	*failure = 1;
-                return;
+                continue;
             }
             next_code += 1;
 			++j;
@@ -247,8 +247,8 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
         {
             prefix_code = code;
         }
-        i += 1;
     }
-	*failure = 0;
+	lzw_codes[j] = prefix_code;
+	*code_length = j + 1;
     *associative_mem = my_assoc_mem.fill;
 }

@@ -242,6 +242,83 @@ void lookup(unsigned long (*hash_table)[2], assoc_mem* mem, unsigned int key, bo
     }
 }
 
+// void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
+//          uint32_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
+// 		 unsigned int *associative_mem) {
+//     // create hash table and assoc mem
+//     unsigned long hash_table[CAPACITY][2];
+//     assoc_mem my_assoc_mem;
+// 
+//     // make sure the memories are clear
+//     for(int i = 0; i < CAPACITY; i++)
+//     {
+//         hash_table[i][0] = 0;
+//         hash_table[i][1] = 0;
+//     }
+//     my_assoc_mem.fill = 0;
+//     for(int i = 0; i < 512; i++)
+//     {
+//         my_assoc_mem.upper_key_mem[i] = 0;
+//         my_assoc_mem.middle_key_mem[i] = 0;
+//         my_assoc_mem.lower_key_mem[i] = 0;
+//     }
+// 
+// //    for (int i = 0; i < ASSOCIATE_MEM_STORE; i++)
+// //        my_assoc_mem.value[i] = 0;
+// 
+//     // init the memories with the first 256 codes
+//     for(unsigned long i = 0; i < 256; i++)
+//     {
+//         bool collision = 0;
+//         unsigned int key = (i << 8) + 0UL; // lower 8 bits are the next char, the upper bits are the prefix code
+//         insert(hash_table, &my_assoc_mem, key, i, &collision);
+//     }
+//     int next_code = 256;
+// 
+//     unsigned int prefix_code = (unsigned int)chunk[start_idx];
+//     unsigned int code = 0;
+//     unsigned char next_char = 0;
+// 	uint32_t j = 0;
+// 
+//     int i = start_idx;
+//     while(i < end_idx)
+//     {
+//         if(i + 1 == end_idx)
+//         {
+// 			lzw_codes[j] = prefix_code;
+// 			*code_length = j + 1;
+//             break;
+//         }
+//         next_char = chunk[i + 1];
+// 
+//         bool hit = 0;
+//         lookup(hash_table, &my_assoc_mem, (prefix_code << 8) + next_char, &hit, &code);
+//         if(!hit)
+//         {
+// 			lzw_codes[j] = prefix_code;
+// 
+//             bool collision = 0;
+//             insert(hash_table, &my_assoc_mem, (prefix_code << 8) + next_char, next_code, &collision);
+//             if(collision)
+//             {
+// 				printf("FAILED TO INSERT!!\n");
+//             	*failure = 1;
+//                 return;
+//             }
+//             next_code += 1;
+// 			++j;
+//             prefix_code = next_char;
+//         }
+//         else
+//         {
+//             prefix_code = code;
+//         }
+//         i += 1;
+//     }
+// 	*failure = 0;
+//     *associative_mem = my_assoc_mem.fill;
+// }
+
 void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
          uint32_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
 		 unsigned int *associative_mem) {
@@ -249,25 +326,24 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
     unsigned long hash_table[CAPACITY][2];
     assoc_mem my_assoc_mem;
 
+    *failure = 0;
+
     // make sure the memories are clear
-    for(int i = 0; i < CAPACITY; i++)
+    LOOP1: for(int i = 0; i < CAPACITY; i++)
     {
         hash_table[i][0] = 0;
         hash_table[i][1] = 0;
     }
     my_assoc_mem.fill = 0;
-    for(int i = 0; i < 512; i++)
+    LOOP2: for(int i = 0; i < 512; i++)
     {
         my_assoc_mem.upper_key_mem[i] = 0;
         my_assoc_mem.middle_key_mem[i] = 0;
         my_assoc_mem.lower_key_mem[i] = 0;
     }
 
-//    for (int i = 0; i < ASSOCIATE_MEM_STORE; i++)
-//        my_assoc_mem.value[i] = 0;
-
     // init the memories with the first 256 codes
-    for(unsigned long i = 0; i < 256; i++)
+    LOOP3: for(unsigned long i = 0; i < 256; i++)
     {
         bool collision = 0;
         unsigned int key = (i << 8) + 0UL; // lower 8 bits are the next char, the upper bits are the prefix code
@@ -276,34 +352,32 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
     int next_code = 256;
 
     unsigned int prefix_code = (unsigned int)chunk[start_idx];
+    unsigned int concat_val = 0;
     unsigned int code = 0;
     unsigned char next_char = 0;
 	uint32_t j = 0;
 
-    int i = start_idx;
-    while(i < end_idx)
+    LOOP4: for (int i = start_idx; i < end_idx - 1; i++)
     {
-        if(i + 1 == end_idx)
-        {
-			lzw_codes[j] = prefix_code;
-			*code_length = j + 1;
-            break;
-        }
+//        if(i != end_idx - 1)
+//        {
+//        	next_char = chunk[i + 1];
+//        }
         next_char = chunk[i + 1];
-
         bool hit = 0;
-        lookup(hash_table, &my_assoc_mem, (prefix_code << 8) + next_char, &hit, &code);
+        concat_val = (prefix_code << 8) + next_char;
+        lookup(hash_table, &my_assoc_mem, concat_val, &hit, &code);
         if(!hit)
         {
 			lzw_codes[j] = prefix_code;
 
             bool collision = 0;
-            insert(hash_table, &my_assoc_mem, (prefix_code << 8) + next_char, next_code, &collision);
+            insert(hash_table, &my_assoc_mem, concat_val, next_code, &collision);
             if(collision)
             {
 				printf("FAILED TO INSERT!!\n");
             	*failure = 1;
-                return;
+                continue;
             }
             next_code += 1;
 			++j;
@@ -313,12 +387,11 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
         {
             prefix_code = code;
         }
-        i += 1;
     }
-	*failure = 0;
+	lzw_codes[j] = prefix_code;
+	*code_length = j + 1;
     *associative_mem = my_assoc_mem.fill;
 }
-
 
 // void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
 //          uint16_t *lzw_codes, uint32_t *code_length) {
