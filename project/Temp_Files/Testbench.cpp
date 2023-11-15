@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include "../Encoder/common.h"
 
-#define FILE_SIZE 2048
+#define FILE_SIZE 4096
 
 using namespace std;
 
@@ -64,6 +64,7 @@ int main()
         printf("Unable to allocate memory for file data!\n");
         exit(EXIT_FAILURE);
     }
+    fseek(fptr, file_sz, 0);
 
     size_t bytes_read = fread(file_data, 1, file_sz, fptr);
 
@@ -80,7 +81,7 @@ int main()
         temp += 1;
     }
 
-    uint16_t lzw_codes[4096];
+    uint32_t lzw_codes[4096];
     uint32_t packet_len = 0;
     unsigned int fill = 0;
     uint8_t failure = 0;

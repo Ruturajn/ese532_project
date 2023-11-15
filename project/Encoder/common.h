@@ -34,7 +34,7 @@ int64_t dedup(string sha_fingerprint);
 //          uint32_t *code_length);
 
 void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
-         uint16_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
+         uint32_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
 		 unsigned int *associative_mem);
 
 #endif

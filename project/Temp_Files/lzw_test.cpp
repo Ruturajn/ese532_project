@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdio.h>
 
 //****************************************************************************************************************
 #define CAPACITY 65536 // hash output is 15 bits, and we have 1 entry per bucket, so capacity is 2^15
@@ -11,6 +12,7 @@
 #define ASSOCIATE_MEM_STORE 64
 // #define CLOSEST_PRIME 65497
 #define CLOSEST_PRIME 32749
+#define FILE_SIZE 4096
 
 using namespace std;
 
@@ -20,7 +22,7 @@ static inline uint32_t murmur_32_scramble(uint32_t k) {
     k *= 0x1b873593;
     return k;
 }
- 
+
 unsigned int my_hash(unsigned long key)
 {
 	uint32_t h = SEED;
@@ -36,16 +38,16 @@ unsigned int my_hash(unsigned long key)
 	h ^= h >> 13;
 	h *= 0xc2b2ae35;
 	h ^= h >> 16;
-    return h & 0x7FFF;
+    return h & 0xFFFF;
 	// return key % CLOSEST_PRIME;
 }
 
 // unsigned int my_hash(unsigned long key)
 // {
 //     key &= 0xFFFFF; // make sure the key is only 20 bits
-// 
+//
 //     unsigned int hashed = 0;
-// 
+//
 //     for(int i = 0; i < 20; i++)
 //     {
 //         hashed += (key >> i)&0x01;
@@ -56,7 +58,7 @@ unsigned int my_hash(unsigned long key)
 //     hashed ^= hashed >> 11;
 //     hashed += hashed << 15;
 //     return hashed & 0x7FFF;          // hash output is 15 bits
-//     //return hashed & 0xFFF;   
+//     //return hashed & 0xFFF;
 // }
 
 void hash_lookup(unsigned long* hash_table, unsigned int key, bool* hit, unsigned int* result)
@@ -202,7 +204,7 @@ void lookup(unsigned long* hash_table, assoc_mem* mem, unsigned int key, bool* h
 }
 
 void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
-         uint16_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
+         uint32_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
 		 unsigned int *associative_mem) {
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY];
