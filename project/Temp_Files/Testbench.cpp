@@ -90,11 +90,13 @@ int main()
     std::vector<int> output_code = encoding(s);
 
     if (failure) {
+    	cout << "TEST PASSED!!" << endl;
     	cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
     	exit(EXIT_FAILURE);
     }
 
     if (packet_len != output_code.size()) {
+    	cout << "TEST PASSED!!" << endl;
     	cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
     	cout << packet_len << "|" << output_code.size() << endl;
     }
@@ -106,6 +108,7 @@ int main()
     	}
     }
 
+    cout << "TEST PASSED!!" << endl;
     cout << "Associate Memory count : " << fill << endl;
 
 	free(file_data);

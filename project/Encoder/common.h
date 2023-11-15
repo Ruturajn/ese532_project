@@ -10,8 +10,8 @@
 #define MAX_CHUNK_SIZE 8192
 #define WIN_SIZE 16
 #define CODE_LENGTH 12
-#define MODULUS 2048
-#define MODULUS_MASK 0x7FF // This is used when performing modulus with MODULUS.
+#define MODULUS 4096
+#define MODULUS_MASK (MODULUS - 1) // This is used when performing modulus with MODULUS.
 #define TARGET 0
 #define PRIME 3
 

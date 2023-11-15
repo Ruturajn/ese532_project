@@ -131,6 +131,8 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW codes");
             lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length, &failure, &assoc_mem);
 
+            cout << "Associative Mem count is : " << assoc_mem << endl;
+
             if (failure) {
                 printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
                 exit(EXIT_FAILURE);
