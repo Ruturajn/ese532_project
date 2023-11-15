@@ -19,13 +19,39 @@
 
 using namespace std;
 
+// static inline uint32_t murmur_32_scramble(uint32_t k) {
+//     k *= 0xcc9e2d51;
+//     k = (k << 15) | (k >> 17);
+//     k *= 0x1b873593;
+//     return k;
+// }
+//  
+// unsigned int my_hash(unsigned long key)
+// {
+// 	uint32_t h = SEED;
+//     uint32_t k = key;
+//     h ^= murmur_32_scramble(k);
+//     h = (h << 13) | (h >> 19);
+//     h = h * 5 + 0xe6546b64;
+// 
+//     h ^= murmur_32_scramble(k);
+//     /* Finalize. */
+// 	h ^= h >> 16;
+// 	h *= 0x85ebca6b;
+// 	h ^= h >> 13;
+// 	h *= 0xc2b2ae35;
+// 	h ^= h >> 16;
+//     return h & 0xFFFF;
+// 	// return key % CLOSEST_PRIME;
+// }
+
 static inline uint32_t murmur_32_scramble(uint32_t k) {
     k *= 0xcc9e2d51;
     k = (k << 15) | (k >> 17);
     k *= 0x1b873593;
     return k;
 }
- 
+
 unsigned int my_hash(unsigned long key)
 {
 	uint32_t h = SEED;
@@ -33,6 +59,10 @@ unsigned int my_hash(unsigned long key)
     h ^= murmur_32_scramble(k);
     h = (h << 13) | (h >> 19);
     h = h * 5 + 0xe6546b64;
+	if (key % 2 == 0)
+		h = h >> 4;
+	else
+		h << 3;
 
     h ^= murmur_32_scramble(k);
     /* Finalize. */
@@ -44,6 +74,19 @@ unsigned int my_hash(unsigned long key)
     return h & 0xFFFF;
 	// return key % CLOSEST_PRIME;
 }
+
+// unsigned int my_hash(unsigned long str)
+// {
+//     unsigned long hash = 5381;
+//     int c = 1;
+// 
+//     while (c < 64) {
+//         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+//         c++;
+// 	}
+// 
+//     return (hash >> 3) & 0xFFFF;
+// }
 
 // unsigned int my_hash(unsigned long key)
 // {
@@ -336,6 +379,8 @@ int main()
         exit(EXIT_FAILURE);
     }
 
+    fseek(fptr, file_sz, file_sz * 3);
+
     size_t bytes_read = fread(file_data, 1, file_sz, fptr);
 
     if (bytes_read != file_sz)
@@ -363,6 +408,8 @@ int main()
     	cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
     	exit(EXIT_FAILURE);
     }
+
+    cout << packet_len << " | " << output_code.size() << endl;
 
     if (packet_len != output_code.size()) {
     	cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;

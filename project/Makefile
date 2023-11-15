@@ -89,7 +89,7 @@ $(CLIENT_EXE):
 	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -I./Encoder/ -o "$@"
+	g++ -O3 $(PROJECT_SOURCES) -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_CDC_DEBUG):
 	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./Encoder/ -o "$@"
