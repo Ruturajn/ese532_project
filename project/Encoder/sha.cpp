@@ -1,15 +1,15 @@
 #include "common.h"
 #include "sha256/sha256.h"
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 #include <stdio.h>
 #include <string.h>
-#include <iostream>
-#include <iomanip>
-#include <sstream>
 #include <vector>
 
 using namespace std;
 
-string bytearray_hex_string(unsigned char* bytes, int size) {
+string bytearray_hex_string(unsigned char *bytes, int size) {
     stringstream ss;
     ss << hex << setfill('0');
     for (int i = 0; i < size; i++) {
@@ -18,13 +18,11 @@ string bytearray_hex_string(unsigned char* bytes, int size) {
     return ss.str();
 }
 
-string sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx,
-               uint32_t chunk_end_idx) {
+string sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx, uint32_t chunk_end_idx) {
     SHA256_CTX ctx;
     BYTE hash_val[32];
 
-    sha256_hash(&ctx, (const BYTE*)(chunked_data + chunk_start_idx),
-                chunk_start_idx, chunk_end_idx, hash_val, 1);
+    sha256_hash(&ctx, (const BYTE *)(chunked_data + chunk_start_idx), chunk_start_idx, chunk_end_idx, hash_val, 1);
 
     string sha_fingerprint = bytearray_hex_string(hash_val, 32);
 

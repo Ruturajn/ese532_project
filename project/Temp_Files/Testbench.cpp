@@ -1,17 +1,15 @@
-#include <iostream>
-#include <iostream>
-#include <vector>
-#include <unordered_map>
-#include <stdlib.h>
 #include "../Encoder/common.h"
+#include <iostream>
+#include <stdlib.h>
+#include <unordered_map>
+#include <vector>
 
 #define FILE_SIZE 4096
 
 using namespace std;
 
 // "Golden" functions to check correctness
-std::vector<int> encoding(std::string s1)
-{
+std::vector<int> encoding(std::string s1) {
     // std::cout << "Encoding\n";
     std::unordered_map<std::string, int> table;
     for (int i = 0; i <= 255; i++) {
@@ -30,8 +28,7 @@ std::vector<int> encoding(std::string s1)
             c += s1[i + 1];
         if (table.find(p + c) != table.end()) {
             p = p + c;
-        }
-        else {
+        } else {
             // std::cout << p << "\t" << table[p] << "\t\t"
             //      << p + c << "\t" << code << std::endl;
             output_code.push_back(table[p]);
@@ -47,8 +44,7 @@ std::vector<int> encoding(std::string s1)
 }
 
 //****************************************************************************************************************
-int main()
-{
+int main() {
     FILE *fptr = fopen("../../../../Text_Files/LittlePrince.txt", "r");
     if (fptr == NULL) {
         printf("Unable to open file!\n");
@@ -81,7 +77,7 @@ int main()
         temp += 1;
     }
 
-    uint32_t lzw_codes[4096];
+    uint32_t lzw_codes[8192];
     uint32_t packet_len = 0;
     unsigned int fill = 0;
     uint8_t failure = 0;
@@ -90,27 +86,29 @@ int main()
     std::vector<int> output_code = encoding(s);
 
     if (failure) {
-    	cout << "TEST PASSED!!" << endl;
-    	cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
-    	exit(EXIT_FAILURE);
+        cout << "TEST FAILED!!" << endl;
+        cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
+        exit(EXIT_FAILURE);
     }
 
     if (packet_len != output_code.size()) {
-    	cout << "TEST PASSED!!" << endl;
-    	cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
-    	cout << packet_len << "|" << output_code.size() << endl;
+        cout << "TEST FAILED!!" << endl;
+        cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
+        cout << packet_len << "|" << output_code.size() << endl;
+        exit(EXIT_FAILURE);
     }
 
     for (int i = 0; i < output_code.size(); i++) {
-    	if (output_code[i] != lzw_codes[i]) {
-    		cout << "FAILURE!!" << endl;
-    		cout << output_code[i] << "|" << lzw_codes[i] << " at i = " << i << endl;
-    	}
+        if (output_code[i] != lzw_codes[i]) {
+            cout << "FAILURE!!" << endl;
+            cout << output_code[i] << "|" << lzw_codes[i] << " at i = " << i
+                 << endl;
+        }
     }
 
     cout << "TEST PASSED!!" << endl;
     cout << "Associate Memory count : " << fill << endl;
 
-	free(file_data);
+    free(file_data);
     return 0;
 }

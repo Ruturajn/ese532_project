@@ -1,9 +1,9 @@
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 #include <vector>
 
-std::string ByteArrayToHexString(unsigned char* bytes, int size) {
+std::string ByteArrayToHexString(unsigned char *bytes, int size) {
     std::stringstream ss;
     ss << std::hex << std::setfill('0');
     for (int i = 0; i < size; i++) {

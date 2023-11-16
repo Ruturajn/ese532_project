@@ -1,20 +1,19 @@
 #include <cstdlib>
-#include <iostream>
 #include <fstream>
-#include <vector>
-#include <string>
+#include <iostream>
 #include <stdint.h>
 #include <stdio.h>
+#include <string>
+#include <vector>
 
 using namespace std;
 
-int main () {
+int main() {
     static std::ifstream Input;
     Input.open("compressed_file.bin", std::ios::binary);
-    if (!Input.good())
-    {
-      std::cerr << "Could not open input file.\n";
-      return EXIT_FAILURE;
+    if (!Input.good()) {
+        std::cerr << "Could not open input file.\n";
+        return EXIT_FAILURE;
     }
 
     unsigned char Header;
@@ -33,36 +32,36 @@ int main () {
     Header = Input.get();
     printf("%x\n", Header);
 
-/*
-    unsigned char Header;
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
+    /*
+        unsigned char Header;
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
 
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
 
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
 
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
 
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
 
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
 
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
 
-    Input.read((char *) &Header, sizeof(unsigned char));
-    printf("%x\n", Header);
-    */
+        Input.read((char *) &Header, sizeof(unsigned char));
+        printf("%x\n", Header);
+        */
 
     /*
     uint32_t Header;

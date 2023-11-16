@@ -1,21 +1,20 @@
-#include "common.h"
 #include "../Server/encoder.h"
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <iostream>
 #include "../Server/server.h"
-#include <unistd.h>
-#include <fcntl.h>
-#include <pthread.h>
+#include "../Server/stopwatch.h"
+#include "Utilities.h"
+#include "common.h"
+#include <chrono>
 #include <errno.h>
 #include <fcntl.h>
+#include <iostream>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
-#include "../Server/stopwatch.h"
-#include <chrono>
+#include <unistd.h>
 #include <vector>
-#include "Utilities.h"
 
 #define NUM_PACKETS 16
 #define pipe_depth 4
@@ -27,29 +26,29 @@ using namespace std;
 uint64_t dedup_bytes = 0;
 uint64_t lzw_bytes = 0;
 
-void handle_input(int argc, char* argv[], int* blocksize, char **filename) {
+void handle_input(int argc, char *argv[], int *blocksize, char **filename) {
     int x;
     extern char *optarg;
 
     while ((x = getopt(argc, argv, ":b:f:")) != -1) {
         switch (x) {
-            case 'b':
-                *blocksize = atoi(optarg);
-                printf("blocksize is set to %d optarg\n", *blocksize);
-                break;
-            case 'f':
-                *filename = optarg;
-                printf("filename is %s\n", *filename);
-                break;
-            case ':':
-                printf("-%c without parameter\n", optopt);
-                break;
+        case 'b':
+            *blocksize = atoi(optarg);
+            printf("blocksize is set to %d optarg\n", *blocksize);
+            break;
+        case 'f':
+            *filename = optarg;
+            printf("filename is %s\n", *filename);
+            break;
+        case ':':
+            printf("-%c without parameter\n", optopt);
+            break;
         }
     }
 }
 
 static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_length, uint32_t *out_packet,
-                                uint32_t packet_len) {
+                                    uint32_t packet_len) {
     unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
 
@@ -88,7 +87,7 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
 
         if (bits_left == 0 && current_val_bits_left == 8) {
             if (data_idx < packet_len) {
-                data[data_idx] = ((current_val) & 0xFF);
+                data[data_idx] = ((current_val)&0xFF);
                 bits_left = 0;
                 data_idx += 1;
                 current_val_bits_left = 0;
@@ -100,18 +99,18 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-static void compression_pipeline(unsigned char *input, int length_sum, FILE *fptr_write,
-                                cl::CommandQueue q, cl::Kernel kernel_lzw, cl::Buffer in_buf,
-                                cl::Buffer out_buf, unsigned char* outputChunk,
-                                unsigned char* tempbuf, cl::Buffer out_packet_length_buf,
-                                uint32_t* out_packet_length, cl::Buffer failure_buf,
-                                uint8_t *failure, cl::Buffer assoc_mem_buf, unsigned int assoc_mem) {
+static void compression_pipeline(unsigned char *input, int length_sum, FILE *fptr_write, cl::CommandQueue q,
+                                 cl::Kernel kernel_lzw, cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
+                                 unsigned char *host_input_chunk, uint32_t *host_output_lzw, cl::Buffer out_packet_length_buf,
+                                 uint32_t *out_packet_length, cl::Buffer failure_buf, uint8_t *failure,
+                                 cl::Buffer assoc_mem_buf, unsigned int *assoc_mem) {
+
     vector<uint32_t> vect;
     string sha_fingerprint;
     int64_t chunk_idx = 0;
     /* uint32_t out_packet_length = 0; */
     /* uint32_t *out_packet = NULL; */
-    /* uint32_t packet_len = 0; */
+    uint32_t packet_len = 0;
     uint32_t header = 0;
     /* uint8_t failure = 0; */
     /* unsigned int assoc_mem = 0; */
@@ -120,11 +119,11 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
     // Step 3: Run the kernel
     // ------------------------------------------------------------------------------------
 
-    stopwatch time_CDC;
-    stopwatch time_LZW;
-    stopwatch time_SHA256;
-    stopwatch time_DeDup;
-    stopwatch total_timer;
+    stopwatch time_cdc;
+    stopwatch time_lzw;
+    stopwatch time_sha;
+    stopwatch time_dedup;
+    stopwatch total_time;
 
     std::vector<cl::Event> write_event(1);
     std::vector<cl::Event> compute_event(1);
@@ -136,11 +135,13 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
     cdc(input, length_sum, vect);
     time_cdc.stop();
 
+    memcpy(host_input_chunk, input, sizeof(unsigned char) * NUM_PACKETS * BLOCKSIZE);
+
     for (int i = 0; i < vect.size() - 1; i++) {
 
         // RUN SHA
         time_sha.start();
-        sha_fingerprint = sha_256(input, vect[i], vect[i+1]);
+        sha_fingerprint = sha_256(input, vect[i], vect[i + 1]);
         time_sha.stop();
 
         // RUN DEDUP
@@ -149,29 +150,34 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
         time_dedup.stop();
 
         if (chunk_idx == -1) {
-            /* out_packet = (uint32_t *)calloc(MAX_CHUNK_SIZE, sizeof(uint32_t)); */
-            /* CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW codes"); */
+            /* out_packet = (uint32_t *)calloc(MAX_CHUNK_SIZE,
+             * sizeof(uint32_t)); */
+            /* CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW
+             * codes"); */
+
 
             time_lzw.start();
 
-            kernel_lzw.setArg(0, in_buf);
+            kernel_lzw.setArg(0, lzw_input_buffer);
             kernel_lzw.setArg(1, sizeof(uint32_t), &vect[i]);
-            kernel_lzw.setArg(2, sizeof(uint32_t), &vect[i+1]);
-            kernel_lzw.setArg(3, out_buf);
+            kernel_lzw.setArg(2, sizeof(uint32_t), &vect[i + 1]);
+            kernel_lzw.setArg(3, lzw_output_buffer);
             kernel_lzw.setArg(4, out_packet_length_buf);
             kernel_lzw.setArg(5, failure_buf);
             kernel_lzw.setArg(6, assoc_mem_buf);
 
-            q.enqueueMigrateMemObjects({in_buf}, 0 /* 0 means from host*/, NULL, &write_event[0]);
+            q.enqueueMigrateMemObjects({lzw_input_buffer}, 0 /* 0 means from host*/, NULL, &write_event[0]);
 
-            //lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length, &failure, &assoc_mem);
+            // lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length,
+            // &failure, &assoc_mem);
 
             q.enqueueTask(kernel_lzw, &write_event, &compute_event[0]);
 
-            q.enqueueMigrateMemObjects({out_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
-            q.enqueueMigrateMemObjects({out_packet_length_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
-            q.enqueueMigrateMemObjects({failure_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
-            q.enqueueMigrateMemObjects({assoc_mem_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
+            q.enqueueMigrateMemObjects({lzw_output_buffer, out_packet_length_buf, failure_buf, assoc_mem_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
+            // q.enqueueMigrateMemObjects({out_packet_length_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event,
+            //                            &done_event[0]);
+            // q.enqueueMigrateMemObjects({failure_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
+            // q.enqueueMigrateMemObjects({assoc_mem_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
             clWaitForEvents(1, (const cl_event *)&done_event[0]);
             time_lzw.stop();
 
@@ -185,7 +191,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             packet_len = ((*out_packet_length * 12) / 8);
             packet_len = (chunk_idx == -1 && (*out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
 
-            unsigned char *data_packet = create_packet(chunk_idx, *out_packet_length, out_packet, packet_len);
+            unsigned char *data_packet = create_packet(chunk_idx, *out_packet_length, host_output_lzw, packet_len);
 
             header = packet_len << 1;
             fwrite(&header, sizeof(uint32_t), 1, fptr_write);
@@ -202,27 +208,28 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             dedup_bytes += 4;
         }
     }
-    total_timer.stop();
-    q.finish();
+    total_time.stop();
+    // q.finish();
 
     // Print Latencies
-    std::cout << "Total latency of CDC is: " << time_CDC.latency() << " ns." << std::endl;
-    std::cout << "Total latency of LZW is: " << time_LZW.latency() << " ns." << std::endl;
-    std::cout << "Total latency of SHA256 is: " << time_SHA256.latency() << " ns." << std::endl;
-    std::cout << "Total latency of DeDup is: " << time_DeDup.latency() << " ns." << std::endl; 
-    std::cout << "Total time taken: " << total_timer.latency() << " ns." << std::endl;
-    std::cout << "---------------------------------------------------------------"<< std::endl;
-    std::cout << "Average latency of CDC per loop iteration is: " << time_CDC.avg_latency() << " ns." << std::endl;
-    std::cout << "Average latency of LZW per loop iteration is: " << time_LZW.avg_latency() << " ns." << std::endl;
-    std::cout << "Average latency of SHA256 per loop iteration is: " << time_SHA256.avg_latency() << " ns." << std::endl;
-    std::cout << "Average latency of DeDup per loop iteration is: " << time_DeDup.avg_latency() << " ns." << std::endl;
-    std::cout << "Average latency: " << total_timer.avg_latency() << " ns." << std::endl;
+    std::cout << "Total latency of CDC is: " << time_cdc.latency() << " ns." << std::endl;
+    std::cout << "Total latency of LZW is: " << time_lzw.latency() << " ns." << std::endl;
+    std::cout << "Total latency of SHA256 is: " << time_sha.latency() << " ns." << std::endl;
+    std::cout << "Total latency of DeDup is: " << time_dedup.latency() << " ns." << std::endl;
+    std::cout << "Total time taken: " << total_time.latency() << " ns." << std::endl;
+    std::cout << "---------------------------------------------------------------" << std::endl;
+    std::cout << "Average latency of CDC per loop iteration is: " << time_cdc.avg_latency() << " ns." << std::endl;
+    std::cout << "Average latency of LZW per loop iteration is: " << time_lzw.avg_latency() << " ns." << std::endl;
+    std::cout << "Average latency of SHA256 per loop iteration is: " << time_sha.avg_latency() << " ns." << std::endl;
+    std::cout << "Average latency of DeDup per loop iteration is: " << time_dedup.avg_latency() << " ns." << std::endl;
+    std::cout << "Average latency: " << total_time.avg_latency() << " ns." << std::endl;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
+
     stopwatch ethernet_timer;
     stopwatch compression_timer;
-    unsigned char* input[NUM_PACKETS];
+    unsigned char *input[NUM_PACKETS];
     int writer = 0;
     int done = 0;
     int length = -1;
@@ -231,7 +238,7 @@ int main(int argc, char* argv[]) {
     ESE532_Server server;
 
     int blocksize = BLOCKSIZE;
-    char* file = strdup("compressed_file.bin");
+    char *file = strdup("compressed_file.bin");
 
     // set blocksize if decalred through command line
     handle_input(argc, argv, &blocksize, &file);
@@ -274,24 +281,30 @@ int main(int argc, char* argv[]) {
     // Step 2: Create buffers and initialize test values
     // ------------------------------------------------------------------------------------
 
-    cl::Buffer input_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * MAX_CHUNK_SIZE, NULL, &err);
-    cl::Buffer output_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(unsigned char) * (MAX_CHUNK_SIZE / 8) * 12, NULL, &err);
+    cl::Buffer lzw_input_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * NUM_PACKETS * blocksize, NULL, &err);
+    cl::Buffer lzw_output_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
 
-    unsigned char* outputChunk = (unsigned char *)q.enqueueMapBuffer(input_buffer, CL_TRUE, CL_MAP_WRITE, 0, sizeof(unsigned char)*MAX_CHUNK_SIZE);
-    unsigned char* tempbuffer = (unsigned char *)q.enqueueMapBuffer(output_buffer, CL_TRUE, CL_MAP_READ, 0, sizeof(unsigned char)*(MAX_CHUNK_SIZE / 8) * 12);
+    // Writing to host_input_chunk will fill up lzw_input_buffer.
+    unsigned char *host_input_chunk = (unsigned char *)q.enqueueMapBuffer(lzw_input_buffer, CL_TRUE, CL_MAP_WRITE, 0,
+                                                                          sizeof(unsigned char) * NUM_PACKETS * blocksize);
+    // LZW's output will be written into host_output_lzw.
+    uint32_t *host_output_lzw =
+        (uint32_t *)q.enqueueMapBuffer(lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
 
     cl::Buffer out_packet_length_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t), NULL, &err);
-    uint32_t* out_packet_length = (uint32_t *)q.enqueueMapBuffer(out_packet_length_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t));
+    uint32_t *out_packet_length =
+        (uint32_t *)q.enqueueMapBuffer(out_packet_length_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t));
 
     cl::Buffer failure_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint8_t), NULL, &err);
-    uint8_t* failure = (uint8_t *)q.enqueueMapBuffer(failure_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(uint8_t));
+    uint8_t *failure = (uint8_t *)q.enqueueMapBuffer(failure_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(uint8_t));
 
     cl::Buffer assoc_mem_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(unsigned int), NULL, &err);
-    uint32_t* assoc_mem = (uint32_t *)q.enqueueMapBuffer(out_packet_length_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(unsigned int));
+    uint32_t *assoc_mem =
+        (uint32_t *)q.enqueueMapBuffer(assoc_mem_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(unsigned int));
 
-    //last message
+    // last message
     while (!done) {
-    // while (length != 0) {
+        // while (length != 0) {
         // reset ring buffer
 
         ethernet_timer.start();
@@ -299,7 +312,7 @@ int main(int argc, char* argv[]) {
         ethernet_timer.stop();
 
         // get packet
-        unsigned char* buffer = input[writer];
+        unsigned char *buffer = input[writer];
 
         // decode
         done = buffer[1] & DONE_BIT_L;
@@ -309,21 +322,21 @@ int main(int argc, char* argv[]) {
         offset += length;
         sum += length;
 
-        // Perform the actual computation here. The idea is to maintain a buffer,
-        // that will hold multiple packets, so that CDC can chunklength) at appropriate
-        // boundaries. Call the compression pipeline function after the buffer is
-        // completely filled.
+        // Perform the actual computation here. The idea is to maintain a
+        // buffer, that will hold multiple packets, so that CDC can chunklength)
+        // at appropriate boundaries. Call the compression pipeline function
+        // after the buffer is completely filled.
         if (length != 0)
             memcpy(pipeline_buffer + (writer * 1024), input[writer] + 2, length);
-            // memcpy(pipeline_buffer + (writer * 1024), input[writer], length);
+        // memcpy(pipeline_buffer + (writer * 1024), input[writer], length);
 
         if (writer == (NUM_PACKETS - 1) || (length < 1024 && length > 0) || done == 1) {
-        // if (writer == (NUM_PACKETS - 1) || (length < 1024 && length > 0)) {
+            // if (writer == (NUM_PACKETS - 1) || (length < 1024 && length > 0))
+            // {
             compression_timer.start();
-            //compression_pipeline(pipeline_buffer, sum, fptr_write);
-            compression_pipeline(pipeline_buffer, sum, fptr_write, q, kernel_lzw,
-                                 input_buffer, output_buffer, outputChunk, tempbuffer,
-                                 out_packet_length_buf, out_packet_length, failure_buf,
+            // compression_pipeline(pipeline_buffer, sum, fptr_write);
+            compression_pipeline(pipeline_buffer, sum, fptr_write, q, krnl_lzw, lzw_input_buffer, lzw_output_buffer,
+                                 host_input_chunk, host_output_lzw, out_packet_length_buf, out_packet_length, failure_buf,
                                  failure, assoc_mem_buf, assoc_mem);
             compression_timer.stop();
             writer = 0;
@@ -339,13 +352,15 @@ int main(int argc, char* argv[]) {
 
     // fclose(fptr);
     fclose(fptr_write);
+    q.finish();
 
     std::cout << "--------------- Key Throughputs ---------------" << std::endl;
     float ethernet_latency = ethernet_timer.latency() / 1000.0;
     float compression_latency = compression_timer.latency() / 1000.0;
     float throughput = (offset * 8 / 1000000.0) / compression_latency; // Mb/s
     // std::cout << "Throughput of the Encoder: " << throughput << " Mb/s."
-    //         << " (Ethernet Latency: " << ethernet_latency << "s)." << std::endl;
+    //         << " (Ethernet Latency: " << ethernet_latency << "s)." <<
+    //         std::endl;
     cout << "Ethernet Latency: " << ethernet_latency << "s." << endl;
     cout << "Bytes Received: " << offset << "B." << endl;
     cout << "Latency for Compression: " << compression_latency << "s." << endl;
