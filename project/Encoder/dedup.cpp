@@ -1,8 +1,8 @@
 #include "common.h"
-#include <iostream>
 #include <cstdlib>
-#include <unordered_map>
+#include <iostream>
 #include <stdbool.h>
+#include <unordered_map>
 
 using namespace std;
 
@@ -22,14 +22,13 @@ int64_t dedup(string sha_fingerprint) {
     // ++chunk_id;
     // return -1;
 
-    bool found = (sha_chunk_id_map.find(sha_fingerprint) ==
-                  sha_chunk_id_map.end() ? false : true);
+    bool found = (sha_chunk_id_map.find(sha_fingerprint) == sha_chunk_id_map.end() ? false : true);
 
     // Perform lookup in map here.
     if (!found) {
         // Insert into map before calling LZW.
-        ++chunk_id;
         sha_chunk_id_map[sha_fingerprint] = chunk_id;
+        ++chunk_id;
         return -1;
     } else
         return sha_chunk_id_map[sha_fingerprint];

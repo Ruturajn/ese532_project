@@ -44,15 +44,25 @@ VPP_OPTS = --target hw
 #
 # OpenCL kernel files
 #
-# XO := kernel.xo
-# XCLBIN := kernel.xclbin
-# ALL_MESSAGE_FILES = $(subst .xo,.mdb,$(XO)) $(subst .xclbin,.mdb,$(XCLBIN))
+XO := lzw.xo
+XCLBIN := lzw.xclbin
+ALL_MESSAGE_FILES = $(subst .xo,.mdb,$(XO)) $(subst .xclbin,.mdb,$(XCLBIN))
+
+#
+# Client files
+#
+CLIENT_SOURCES = Client/client.cpp
+CLIENT_EXE = client
 
 #
 # host files
 #
-CLIENT_SOURCES = Client/client.cpp
-CLIENT_EXE = client
+HOST_SOURCES = Encoder/cdc.cpp Encoder/sha.cpp Encoder/dedup.cpp Encoder/lzw.cpp Encoder/host.cpp Server/server.cpp Encoder/sha256/sha256.cpp Encoder/Utilities.cpp
+HOST_OBJECTS=$(HOST_SOURCES:.cpp=.o)
+HOST_EXE = host
+
+$(HOST_EXE): $(HOST_OBJECTS)
+	$(HOST_CXX) -I./Encoder/ -o "$@" $(+) $(LDFLAGS)
 
 # SERVER_SOURCES = Server/encoder.cpp Server/server.cpp
 # SERVER_OBJECTS =$(SERVER_SOURCES:.cpp=.o)
@@ -62,7 +72,7 @@ DECODER_SOURCES = Decoder/Decoder.cpp
 DECODER_OBJECTS =$(DECODER_SOURCES:.cpp=.o)
 DECODER_EXE = decoder
 
-PROJECT_SOURCES = cdc.cpp sha.cpp dedup.cpp lzw.cpp main.cpp Server/server.cpp sha256/sha256.cpp
+PROJECT_SOURCES = Encoder/cdc.cpp Encoder/sha.cpp Encoder/dedup.cpp Encoder/lzw.cpp Encoder/main.cpp Server/server.cpp Encoder/sha256/sha256.cpp
 PROJECT_OBJECTS =$(PROJECT_SOURCES:.cpp=.o)
 PROJECT_EXE = encoder
 PROJECT_EXE_CDC_DEBUG = encdc_debug
@@ -70,15 +80,10 @@ PROJECT_EXE_SHA_TEST = ensha_test
 PROJECT_EXE_SHA_DEBUG = ensha_debug
 PROJECT_EXE_MAIN_DEBUG = enmain_debug
 
-# CPU_SOURCES = cpu/Host.cpp ../../common/EventTimer.cpp ../../common/Utilities.cpp
-# CPU_OBJECTS=$(CPU_SOURCES:.cpp=.o)
-# CPU_EXE = mmult_cpu
+.PHONY: cpu
 
-# .PHONY: cpu
-# cpu: $(CPU_EXE)
+cpu: $(PROJECT_EXE)
 
-# $(CPU_EXE): $(CPU_OBJECTS)
-# 	$(HOST_CXX) -I./fpga/hls/ -o "$@" $(+) $(LDFLAGS)
 all: $(CLIENT_EXE) $(SERVER_EXE) $(DECODER_EXE) $(PROJECT_EXE)
 proj_main_debug: $(PROJECT_EXE_MAIN_DEBUG)
 proj_sha_test: $(PROJECT_EXE_SHA_TEST)
@@ -86,30 +91,28 @@ proj_sha_debug: $(PROJECT_EXE_SHA_DEBUG)
 proj_cdc_debug: $(PROJECT_EXE_CDC_DEBUG)
 
 $(CLIENT_EXE):
-	g++ -O3 $(CLIENT_SOURCES) -o "$@"
+	$(HOST_CXX) -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	$(HOST_CXX) -O3 $(PROJECT_SOURCES) -I./sha256/ -o "$@"
+	$(HOST_CXX) $(PROJECT_SOURCES) -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_CDC_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DCDC_DEBUG -I./sha256/ -o "$@"
+	$(HOST_CXX) $(PROJECT_SOURCES) -DCDC_DEBUG -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_SHA_TEST):
-	g++ -O3 $(PROJECT_SOURCES) -DSHA_TEST -I./sha256/ -o "$@"
+	$(HOST_CXX) $(PROJECT_SOURCES) -DSHA_TEST -I./Encoder/ -o" $@" 
 
 $(PROJECT_EXE_SHA_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DSHA_DEBUG -I./sha256/ -o "$@"
+	$(HOST_CXX) $(PROJECT_SOURCES) -DSHA_DEBUG -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_MAIN_DEBUG):
-	g++ -O3 $(PROJECT_SOURCES) -DMAIN_DEBUG -I./sha256/ -o "$@"
+	$(HOST_CXX) $(PROJECT_SOURCES) -DMAIN_DEBUG -I./Encoder/ -o "$@"
 
 $(SERVER_EXE): $(SERVER_OBJECTS)
 	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)
-	# -@echo $(VPP) --package --config fpga/package.cfg --package.kernel_image $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/image/image.ub --package.rootfs $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/rootfs/rootfs.ext4 $(XCLBIN)
-	# -@$(VPP) --package --config fpga/package.cfg --package.sd_file "$@" --package.kernel_image $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/image/image.ub --package.rootfs $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/rootfs/rootfs.ext4 $(XCLBIN)
 
 $(DECODER_EXE): $(DECODER_OBJECTS)
-	$(HOST_CXX) -o "$@" $(+) $(LDFLAGS)
+	$(HOST_CXX) -g -o "$@" $(+) $(LDFLAGS)
 
 .cpp.o:
 	$(HOST_CXX) $(CXXFLAGS) -I./server -o "$@" "$<"
@@ -118,39 +121,59 @@ $(DECODER_EXE): $(DECODER_OBJECTS)
 # primary build targets
 #
 
-# .PHONY: fpga clean
-# fpga: $(XCLBIN)
+.PHONY: fpga clean
+fpga: package/sd_card.img
 
 .NOTPARALLEL: clean
 
-clean:
-	-$(RM) $(SERVER_EXE) $(SERVER_OBJECTS) $(DECODER_EXE) $(DECODER_OBJECTS) $(CLIENT_EXE) $(PROJECT_OBJECTS) $(PROJECT_EXE) $(PROJECT_EXE_CDC_DEBUG) $(PROJECT_EXE_MAIN_DEBUG) $(PROJECT_EXE_SHA_TEST) $(PROJECT_EXE_SHA_DEBUG)
+clean-cpu:
+	-$(RM) $(SERVER_EXE) $(SERVER_OBJECTS) $(DECODER_EXE) \
+		$(DECODER_OBJECTS) $(CLIENT_EXE) $(PROJECT_OBJECTS) \
+		$(PROJECT_EXE) $(PROJECT_EXE_CDC_DEBUG) \
+		$(PROJECT_EXE_MAIN_DEBUG) $(PROJECT_EXE_SHA_TEST) \
+		$(PROJECT_EXE_SHA_DEBUG)
 
-# clean-cpu:
-# 	-$(RM) $(CPU_EXE) $(CPU_OBJECTS) 
+clean-host:
+	-$(RM) $(HOST_EXE) $(HOST_OBJECTS) 
 
-# clean-host:
-# 	-$(RM) $(HOST_EXE) $(HOST_OBJECTS) 
+clean-accelerators:
+	-$(RM) $(XCLBIN) $(XO) $(ALL_MESSAGE_FILES)
+	-$(RM) *.xclbin.sh *.xclbin.info *.xclbin.link_summary* *.compile_summary
+	-$(RMDIR) .Xil fpga/hls/proj_mmult
 
-# clean-accelerators:
-# 	-$(RM) $(XCLBIN) $(XO) $(ALL_MESSAGE_FILES)
-# 	-$(RM) *.xclbin.sh *.xclbin.info *.xclbin.link_summary* *.compile_summary
-# 	-$(RMDIR) .Xil fpga/hls/proj_mmult
+clean-package:
+	-${RMDIR} package
+	-${RMDIR} package.build
 
-# clean-package:
-# 	-${RMDIR} package
-# 	-${RMDIR} package.build
-
-# clean: clean-cpu clean-host clean-accelerators clean-package
-# 	-$(RM) *.log *.package_summary
-# 	-${RMDIR} _x .ipcache
+clean: clean-cpu clean-host clean-accelerators clean-package
+	-$(RM) *.log *.package_summary
+	-${RMDIR} _x .ipcache
 
 #
-# binary container: kernel.xclbin
+# binary container: lzw.xclbin
 #
 
-# $(XO): fpga/hls/MMult.cpp
-# 	-@$(RM) $@
-# 	$(VPP) $(VPP_OPTS) -k mmult_fpga --compile -I"$(<D)" --config fpga/design.cfg -o"$@" "$<"
-# $(XCLBIN): $(XO)
-# 	$(VPP) $(VPP_OPTS) --link --config fpga/design.cfg -o"$@" $(+)
+$(XO): Encoder/lzw_vitis.cpp
+	-@$(RM) $@
+	$(VPP) $(VPP_OPTS) -k lzw --compile -I"$(<D)" --config ./design.cfg -o"$@" "$<"
+
+$(XCLBIN): $(XO)
+	$(VPP) $(VPP_OPTS) --link --config ./design.cfg -o"$@" $(+)
+
+
+package/sd_card.img: $(HOST_EXE) $(XCLBIN) ./xrt.ini
+	$(VPP) --package $(VPP_OPTS) --config ./package.cfg $(XCLBIN) \
+		--package.out_dir package \
+		--package.sd_file $(HOST_EXE) \
+		--package.kernel_image $(PLATFORM_REPO_PATHS)/sw/$(VITIS_PLATFORM)/PetaLinux/image/image.ub \
+		--package.rootfs $(PLATFORM_REPO_PATHS)/sw/$(VITIS_PLATFORM)/PetaLinux/rootfs/rootfs.ext4 \
+		--package.sd_file $(XCLBIN) \
+		--package.sd_file ./xrt.ini
+
+# package/sd_card.img: $(CPU_EXE) $(XCLBIN) ./xrt.ini
+# 	-@echo $(VPP) --package --config fpga/package.cfg \
+# 		--package.kernel_image $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/image/image.ub \
+# 		--package.rootfs $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/rootfs/rootfs.ext4 $(XCLBIN)
+# 	-@$(VPP) --package --config fpga/package.cfg --package.sd_file "$@" \
+# 		--package.kernel_image $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/image/image.ub \
+# 		--package.rootfs $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/rootfs/rootfs.ext4 $(XCLBIN)
