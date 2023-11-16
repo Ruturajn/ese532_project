@@ -8,7 +8,7 @@
 #include <unistd.h>
 
 //#define BLOCKSIZE 8192 // Tuneable. must match the transmitter side
-#define BLOCKSIZE 1024
+#define BLOCKSIZE 8192
 #define HEADER 2
 
 class ESE532_Server {

@@ -16,7 +16,7 @@
 #include <unistd.h>
 #include <vector>
 
-#define NUM_PACKETS 16
+#define NUM_PACKETS 2
 #define pipe_depth 4
 #define DONE_BIT_L (1 << 7)
 #define DONE_BIT_H (1 << 15)
@@ -129,13 +129,17 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
     std::vector<cl::Event> compute_event(1);
     std::vector<cl::Event> done_event(1);
 
+    cl::Event start, stop;
+    cl_ulong time_start = 0, time_end = 0;
+    double total_time_1 = 0, total_time_2 = 0;
+
     total_time.start();
     // RUN CDC
     time_cdc.start();
     cdc(input, length_sum, vect);
     time_cdc.stop();
 
-    memcpy(host_input_chunk, input, sizeof(unsigned char) * NUM_PACKETS * BLOCKSIZE);
+    memcpy(host_input_chunk, input, sizeof(unsigned char) * length_sum);
 
     for (int i = 0; i < vect.size() - 1; i++) {
 
@@ -155,7 +159,6 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             /* CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW
              * codes"); */
 
-
             time_lzw.start();
 
             kernel_lzw.setArg(0, lzw_input_buffer);
@@ -171,7 +174,22 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             // lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length,
             // &failure, &assoc_mem);
 
+            q.enqueueMarker(&start);
             q.enqueueTask(kernel_lzw, &write_event, &compute_event[0]);
+            q.enqueueMarker(&stop);
+
+            // Method 1
+            stop.wait();
+            start.getProfilingInfo(CL_PROFILING_COMMAND_END, &time_start);
+            stop.getProfilingInfo(CL_PROFILING_COMMAND_START, &time_end);
+            total_time_1 += time_end - time_start;
+
+            // Method 2
+            compute_event[0].wait();
+            total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() -
+            compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>();
+
+            // q.enqueueTask(kernel_lzw, &write_event, &compute_event[0]);
 
             q.enqueueMigrateMemObjects({lzw_output_buffer, out_packet_length_buf, failure_buf, assoc_mem_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
             // q.enqueueMigrateMemObjects({out_packet_length_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event,
@@ -217,6 +235,8 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
     std::cout << "Total latency of SHA256 is: " << time_sha.latency() << " ns." << std::endl;
     std::cout << "Total latency of DeDup is: " << time_dedup.latency() << " ns." << std::endl;
     std::cout << "Total time taken: " << total_time.latency() << " ns." << std::endl;
+    std::cout << "Total time taken Method 1: " << total_time_1 << " ns." << std::endl;
+    std::cout << "Total time taken Method 2: " << total_time_2 << " ns." << std::endl;
     std::cout << "---------------------------------------------------------------" << std::endl;
     std::cout << "Average latency of CDC per loop iteration is: " << time_cdc.avg_latency() << " ns." << std::endl;
     std::cout << "Average latency of LZW per loop iteration is: " << time_lzw.avg_latency() << " ns." << std::endl;
@@ -327,10 +347,10 @@ int main(int argc, char *argv[]) {
         // at appropriate boundaries. Call the compression pipeline function
         // after the buffer is completely filled.
         if (length != 0)
-            memcpy(pipeline_buffer + (writer * 1024), input[writer] + 2, length);
+            memcpy(pipeline_buffer + (writer * blocksize), input[writer] + 2, length);
         // memcpy(pipeline_buffer + (writer * 1024), input[writer], length);
 
-        if (writer == (NUM_PACKETS - 1) || (length < 1024 && length > 0) || done == 1) {
+        if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) || done == 1) {
             // if (writer == (NUM_PACKETS - 1) || (length < 1024 && length > 0))
             // {
             compression_timer.start();

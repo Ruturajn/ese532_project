@@ -6,16 +6,19 @@ help:
 	@echo "  make all"
 	@echo "      Command to build client, encoder and decoder."
 	@echo ""
-	@echo "  make clent"
+	@echo "  make fpga"
+	@echo "      Command to build the sd card package."
+	@echo ""
+	@echo "  make client"
 	@echo "      Command to build client."
 	@echo ""
-	@echo "  make encoder "
+	@echo "  make encoder"
 	@echo "      Command to build encoder."
 	@echo ""
-	@echo "  make decoder "
+	@echo "  make decoder"
 	@echo "      Command to build decoder."
 	@echo ""
-	@echo "  make clean "
+	@echo "  make clean"
 	@echo "      Command to remove the generated files."
 	@echo ""
 #######################################################################################
@@ -64,9 +67,9 @@ HOST_EXE = host
 $(HOST_EXE): $(HOST_OBJECTS)
 	$(HOST_CXX) -I./Encoder/ -o "$@" $(+) $(LDFLAGS)
 
-# SERVER_SOURCES = Server/encoder.cpp Server/server.cpp
-# SERVER_OBJECTS =$(SERVER_SOURCES:.cpp=.o)
-# SERVER_EXE = encoder
+SERVER_SOURCES = Server/encoder.cpp Server/server.cpp
+SERVER_OBJECTS =$(SERVER_SOURCES:.cpp=.o)
+SERVER_EXE = server
 
 DECODER_SOURCES = Decoder/Decoder.cpp
 DECODER_OBJECTS =$(DECODER_SOURCES:.cpp=.o)
@@ -120,7 +123,6 @@ $(DECODER_EXE): $(DECODER_OBJECTS)
 #
 # primary build targets
 #
-
 .PHONY: fpga clean
 fpga: package/sd_card.img
 
@@ -152,14 +154,12 @@ clean: clean-cpu clean-host clean-accelerators clean-package
 #
 # binary container: lzw.xclbin
 #
-
 $(XO): Encoder/lzw_vitis.cpp
 	-@$(RM) $@
 	$(VPP) $(VPP_OPTS) -k lzw --compile -I"$(<D)" --config ./design.cfg -o"$@" "$<"
 
 $(XCLBIN): $(XO)
 	$(VPP) $(VPP_OPTS) --link --config ./design.cfg -o"$@" $(+)
-
 
 package/sd_card.img: $(HOST_EXE) $(XCLBIN) ./xrt.ini
 	$(VPP) --package $(VPP_OPTS) --config ./package.cfg $(XCLBIN) \
@@ -169,11 +169,3 @@ package/sd_card.img: $(HOST_EXE) $(XCLBIN) ./xrt.ini
 		--package.rootfs $(PLATFORM_REPO_PATHS)/sw/$(VITIS_PLATFORM)/PetaLinux/rootfs/rootfs.ext4 \
 		--package.sd_file $(XCLBIN) \
 		--package.sd_file ./xrt.ini
-
-# package/sd_card.img: $(CPU_EXE) $(XCLBIN) ./xrt.ini
-# 	-@echo $(VPP) --package --config fpga/package.cfg \
-# 		--package.kernel_image $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/image/image.ub \
-# 		--package.rootfs $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/rootfs/rootfs.ext4 $(XCLBIN)
-# 	-@$(VPP) --package --config fpga/package.cfg --package.sd_file "$@" \
-# 		--package.kernel_image $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/image/image.ub \
-# 		--package.rootfs $(PLATFORM_REPO_PATHS)/sw/ese532_hw6_pfm/linux_domain/rootfs/rootfs.ext4 $(XCLBIN)
