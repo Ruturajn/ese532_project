@@ -174,7 +174,7 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *l
 
 #pragma HLS INTERFACE m_axi port = chunk depth = 4096 bundle = p0
 #pragma HLS INTERFACE m_axi port = lzw_codes depth = 8192 bundle = p1
-#pragma HLS INTERFACE m_axi port = code_length depth = 1 bundle = p2
+#pragma HLS INTERFACE m_axi port = code_length depth = 1 bundle = p1
 #pragma HLS INTERFACE m_axi port = failure depth = 1 bundle = p0
 #pragma HLS INTERFACE m_axi port = associative_mem depth = 1 bundle = p1
 
