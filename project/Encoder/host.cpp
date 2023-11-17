@@ -26,19 +26,24 @@ using namespace std;
 uint64_t dedup_bytes = 0;
 uint64_t lzw_bytes = 0;
 
-void handle_input(int argc, char *argv[], int *blocksize, char **filename) {
+void handle_input(int argc, char *argv[], int *blocksize, char **filename,
+                  char **kernel_name) {
     int x;
     extern char *optarg;
 
-    while ((x = getopt(argc, argv, ":b:f:")) != -1) {
+    while ((x = getopt(argc, argv, ":b:f:k:")) != -1) {
         switch (x) {
+        case 'k':
+            *kernel_name = optarg;
+            printf("Kernel name is set to %s optarg\n", *kernel_name);
+            break;
         case 'b':
             *blocksize = atoi(optarg);
             printf("blocksize is set to %d optarg\n", *blocksize);
             break;
         case 'f':
             *filename = optarg;
-            printf("filename is %s\n", *filename);
+            printf("filename is %s optarg\n", *filename);
             break;
         case ':':
             printf("-%c without parameter\n", optopt);
@@ -248,9 +253,10 @@ int main(int argc, char *argv[]) {
 
     int blocksize = BLOCKSIZE;
     char *file = strdup("compressed_file.bin");
+    char *kernel_name = strdup("lzw.xclbin");
 
     // set blocksize if decalred through command line
-    handle_input(argc, argv, &blocksize, &file);
+    handle_input(argc, argv, &blocksize, &file, &kernel_name);
 
     FILE *fptr_write = fopen(file, "wb");
     if (fptr_write == NULL) {
@@ -274,7 +280,7 @@ int main(int argc, char *argv[]) {
     // Step 1: Initialize the OpenCL environment
     // ------------------------------------------------------------------------------------
     cl_int err;
-    std::string binaryFile = argv[1];
+    std::string binaryFile = kernel_name;
     unsigned fileBufSize;
     std::vector<cl::Device> devices = get_xilinx_devices();
     devices.resize(1);
