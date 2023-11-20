@@ -38,7 +38,8 @@ VITIS_PLATFORM_DIR = ${PLATFORM_REPO_PATHS}
 VITIS_PLATFORM_PATH = $(VITIS_PLATFORM_DIR)/u96v2_sbc_base.xpfm
 
 # host compiler global settings
-CXXFLAGS += -march=armv8-a+simd -mtune=cortex-a53 -std=c++11 -DVITIS_PLATFORM=$(VITIS_PLATFORM) -D__USE_XOPEN2K8 -I$(XILINX_VIVADO)/include/ -I$(VITIS_PLATFORM_DIR)/sw/u96v2_sbc_base/PetaLinux/sysroot/aarch64-xilinx-linux/usr/include/xrt/ -O3 -g -Wall -c -fmessage-length=0 --sysroot=$(VITIS_PLATFORM_DIR)/sw/u96v2_sbc_base/PetaLinux/sysroot/aarch64-xilinx-linux
+# CXXFLAGS += -march=armv8-a+simd -mtune=cortex-a53 -std=c++11 -DVITIS_PLATFORM=$(VITIS_PLATFORM) -D__USE_XOPEN2K8 -I$(XILINX_VIVADO)/include/ -I$(VITIS_PLATFORM_DIR)/sw/u96v2_sbc_base/PetaLinux/sysroot/aarch64-xilinx-linux/usr/include/xrt/ -O3 -g -Wall -c -fmessage-length=0 --sysroot=$(VITIS_PLATFORM_DIR)/sw/u96v2_sbc_base/PetaLinux/sysroot/aarch64-xilinx-linux
+CXXFLAGS += -march=armv8-a+crc+crypto+simd -mtune=cortex-a53 -std=c++11 -DVITIS_PLATFORM=$(VITIS_PLATFORM) -D__USE_XOPEN2K8 -I$(XILINX_VIVADO)/include/ -I$(VITIS_PLATFORM_DIR)/sw/u96v2_sbc_base/PetaLinux/sysroot/aarch64-xilinx-linux/usr/include/xrt/ -O3 -g -Wall -c -fmessage-length=0 --sysroot=$(VITIS_PLATFORM_DIR)/sw/u96v2_sbc_base/PetaLinux/sysroot/aarch64-xilinx-linux
 LDFLAGS += -lxilinxopencl -lpthread -lrt -ldl -lcrypt -lstdc++ -L$(VITIS_PLATFORM_DIR)/sw/u96v2_sbc_base/PetaLinux/sysroot/aarch64-xilinx-linux/usr/lib/ --sysroot=$(VITIS_PLATFORM_DIR)/sw/u96v2_sbc_base/PetaLinux/sysroot/aarch64-xilinx-linux
 
 # hardware compiler shared settings
@@ -47,8 +48,8 @@ VPP_OPTS = --target hw
 #
 # OpenCL kernel files
 #
-XO := lzw.xo
-XCLBIN := lzw.xclbin
+XO := encoder.xo
+XCLBIN := encoder.xclbin
 ALL_MESSAGE_FILES = $(subst .xo,.mdb,$(XO)) $(subst .xclbin,.mdb,$(XCLBIN))
 
 #
@@ -62,7 +63,7 @@ CLIENT_EXE = client
 #
 HOST_SOURCES = Encoder/cdc.cpp Encoder/sha.cpp Encoder/dedup.cpp Encoder/lzw.cpp Encoder/host.cpp Server/server.cpp Encoder/sha256/sha256.cpp Encoder/Utilities.cpp
 HOST_OBJECTS=$(HOST_SOURCES:.cpp=.o)
-HOST_EXE = host
+HOST_EXE = encoder
 
 $(HOST_EXE): $(HOST_OBJECTS)
 	$(HOST_CXX) -I./Encoder/ -o "$@" $(+) $(LDFLAGS)
@@ -77,7 +78,7 @@ DECODER_EXE = decoder
 
 PROJECT_SOURCES = Encoder/cdc.cpp Encoder/sha.cpp Encoder/dedup.cpp Encoder/lzw.cpp Encoder/main.cpp Server/server.cpp Encoder/sha256/sha256.cpp
 PROJECT_OBJECTS =$(PROJECT_SOURCES:.cpp=.o)
-PROJECT_EXE = encoder
+PROJECT_EXE = encoder_cpu
 PROJECT_EXE_CDC_DEBUG = encdc_debug
 PROJECT_EXE_SHA_TEST = ensha_test
 PROJECT_EXE_SHA_DEBUG = ensha_debug
@@ -97,7 +98,7 @@ $(CLIENT_EXE):
 	$(HOST_CXX) -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
-	$(HOST_CXX) $(PROJECT_SOURCES) -I./Encoder/ -o "$@"
+	g++ $(PROJECT_SOURCES) -I./Encoder/ -o "$@"
 
 $(PROJECT_EXE_CDC_DEBUG):
 	$(HOST_CXX) $(PROJECT_SOURCES) -DCDC_DEBUG -I./Encoder/ -o "$@"
@@ -152,11 +153,11 @@ clean: clean-cpu clean-host clean-accelerators clean-package
 	-${RMDIR} _x .ipcache
 
 #
-# binary container: lzw.xclbin
+# binary container: encoder.xclbin
 #
 $(XO): Encoder/lzw_vitis.cpp
 	-@$(RM) $@
-	$(VPP) $(VPP_OPTS) -k lzw --compile -I"$(<D)" --config ./design.cfg -o"$@" "$<"
+	$(VPP) $(VPP_OPTS) -k encoder --compile -I"$(<D)" --config ./design.cfg -o"$@" "$<"
 
 $(XCLBIN): $(XO)
 	$(VPP) $(VPP_OPTS) --link --config ./design.cfg -o"$@" $(+)

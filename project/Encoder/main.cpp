@@ -209,7 +209,9 @@ int main(int argc, char *argv[]) {
     int sum = 0;
     // ESE532_Server server;
 
-    FILE *fptr = fopen("./Text_Files/LittlePrince.txt", "r");
+    FILE *fptr = fopen("./Text_Files/Franklin.txt", "r");
+    // FILE *fptr = fopen("./Temp_Files/ruturajn.tgz", "r");
+    // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_c1.JPG", "rb");
     if (fptr == NULL) {
         printf("Error reading file!!\n");
         exit(EXIT_FAILURE);

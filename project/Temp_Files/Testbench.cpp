@@ -46,6 +46,9 @@ std::vector<int> encoding(std::string s1) {
 //****************************************************************************************************************
 int main() {
     FILE *fptr = fopen("../../../../Text_Files/LittlePrince.txt", "r");
+    // FILE *fptr = fopen("./ruturajn.tgz", "r");
+    // FILE *fptr = fopen("../Text_Files/LittlePrince.txt", "r");
+    // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_c1.JPG", "rb");
     if (fptr == NULL) {
         printf("Unable to open file!\n");
         exit(EXIT_FAILURE);
@@ -71,8 +74,9 @@ int main() {
     fclose(fptr);
     std::string s;
     char *temp = (char *)file_data;
+    int count = 0;
 
-    while (*temp != '\0') {
+    while (count++ < file_sz) {
         s += *temp;
         temp += 1;
     }
