@@ -94,20 +94,20 @@ void hash_insert(unsigned long (*hash_table)[2], unsigned int key, unsigned int 
     unsigned long lookup = lookup_ptr[0];
     unsigned int valid = (lookup >> (20 + 12)) & 0x1;
 
-    if (valid) {
-        lookup = lookup_ptr[1];
-        valid = (lookup >> (20 + 12)) & 0x1;
-        if (valid) {
-            *collision = 1;
-            return;
-        }
-        lookup_ptr[1] = (1UL << (20 + 12)) | (value << 20) | key;
+    if (!valid) {
+        lookup_ptr[0] = (1UL << (20 + 12)) | (value << 20) | key;
         *collision = 0;
         return;
     }
 
-    lookup_ptr[0] = (1UL << (20 + 12)) | (value << 20) | key;
-    *collision = 0;
+	lookup = lookup_ptr[1];
+	valid = (lookup >> (20 + 12)) & 0x1;
+	if (valid) {
+		*collision = 1;
+		return;
+	}
+	lookup_ptr[1] = (1UL << (20 + 12)) | (value << 20) | key;
+	*collision = 0;
 }
 
 void assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
@@ -117,11 +117,14 @@ void assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value, bool *co
     unsigned int mem_fill = mem->fill;
 
     if (mem_fill < ASSOCIATIVE_MEM_STORE) {
-        mem->upper_key_mem[(key >> 18) % 512] |= (1 << mem_fill); // set the fill'th bit to 1, while preserving
+    	unsigned int key_high = (key >> 18) & 0x1FF;
+    	unsigned int key_middle = (key >> 9) & 0x1FF;
+    	unsigned int key_low = (key) & 0x1FF;
+        mem->upper_key_mem[key_high] |= (1 << mem_fill); // set the fill'th bit to 1, while preserving
                                                                   // everything else
-        mem->middle_key_mem[(key >> 9) % 512] |= (1 << mem_fill); // set the fill'th bit to 1, while preserving
+        mem->middle_key_mem[key_middle] |= (1 << mem_fill); // set the fill'th bit to 1, while preserving
                                                                   // everything else
-        mem->lower_key_mem[(key >> 0) % 512] |= (1 << mem_fill);  // set the fill'th bit to 1, while preserving
+        mem->lower_key_mem[key_low] |= (1 << mem_fill);  // set the fill'th bit to 1, while preserving
                                                                   // everything else
         mem->value[mem_fill] = value;
         mem->fill = mem_fill + 1;
@@ -133,26 +136,55 @@ void assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value, bool *co
 
 void assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
     key &= 0xFFFFF; // make sure key is only 20 bits
+	unsigned int key_high = (key >> 18) & 0x1FF;
+	unsigned int key_middle = (key >> 9) & 0x1FF;
+	unsigned int key_low = (key) & 0x1FF;
 
-    unsigned int match_high = mem->upper_key_mem[(key >> 18) % 512];
-    unsigned int match_middle = mem->middle_key_mem[(key >> 9) % 512];
-    unsigned int match_low = mem->lower_key_mem[(key >> 0) % 512];
+    unsigned int match_high = mem->upper_key_mem[key_high];
+    unsigned int match_middle = mem->middle_key_mem[key_middle];
+    unsigned int match_low = mem->lower_key_mem[key_low];
 
-    unsigned int match = match_high & match_middle & match_low;
+    unsigned long match = match_high & match_middle & match_low;
 
-    unsigned int address = 0;
-LOOP5:
-    for (; address < ASSOCIATIVE_MEM_STORE; address++) {
-        if ((match >> address) & 0x1) {
-            break;
-        }
+    if (match == 0) {
+    	*hit = 0;
+    	return;
     }
+
+    unsigned int address = 0; //(unsigned int)(log2(match & -match) + 1);
+
+    // Right shift until the rightmost set bit is found
+    address += ((match & 0x00000000FFFFFFFFUL) == 0) ? 32 : 0;
+    match >>= ((match & 0x00000000FFFFFFFFUL) == 0) ? 32 : 0;
+
+    address += ((match & 0x000000000000FFFFUL) == 0) ? 16 : 0;
+    match >>= ((match & 0x000000000000FFFFUL) == 0) ? 16 : 0;
+
+    address += ((match & 0x00000000000000FFUL) == 0) ? 8  : 0;
+    match >>= ((match & 0x00000000000000FFUL) == 0) ? 8  : 0;
+
+    address += ((match & 0x000000000000000FUL) == 0) ? 4  : 0;
+    match >>= ((match & 0x000000000000000FUL) == 0) ? 4  : 0;
+
+    address += ((match & 0x0000000000000003UL) == 0) ? 2  : 0;
+    match >>= ((match & 0x0000000000000003UL) == 0) ? 2  : 0;
+
+    address += ((match & 0x0000000000000001UL) == 0) ? 1  : 0;
+    match >>= ((match & 0x0000000000000001UL) == 0) ? 1  : 0;
+
     if (address != ASSOCIATIVE_MEM_STORE) {
         *result = mem->value[address];
         *hit = 1;
         return;
     }
     *hit = 0;
+
+    //LOOP5:
+    //    for (; address < ASSOCIATIVE_MEM_STORE; address++) {
+    //        if ((match >> address) & 0x1) {
+    //            break;
+    //        }
+    //    }
 }
 
 void insert(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
@@ -180,7 +212,7 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *l
 
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY][2];
-#pragma HLS array_partition block factor = 2 dim = 1
+#pragma HLS array_partition variable=hash_table complete dim = 2
     assoc_mem my_assoc_mem;
 
     *failure = 0;
@@ -206,7 +238,13 @@ LOOP3:
         bool collision = 0;
         unsigned int key = (i << 8) + 0UL; // lower 8 bits are the next char,
                                            // the upper bits are the prefix code
-        insert(hash_table, &my_assoc_mem, key, i, &collision);
+        //***************************************************************
+        //insert(hash_table, &my_assoc_mem, key, i, &collision);
+        hash_insert(hash_table, key, i, &collision);
+        if (collision) {
+            assoc_insert(&my_assoc_mem, key, i, &collision);
+        }
+        //***************************************************************
     }
     int next_code = 256;
 
@@ -218,19 +256,27 @@ LOOP3:
 
 LOOP4:
     for (int i = start_idx; i < end_idx - 1; i++) {
-        //        if(i != end_idx - 1)
-        //        {
-        //        	next_char = chunk[i + 1];
-        //        }
         next_char = chunk[i + 1];
         bool hit = 0;
         concat_val = (prefix_code << 8) + next_char;
-        lookup(hash_table, &my_assoc_mem, concat_val, &hit, &code);
+        //***************************************************************
+        //lookup(hash_table, &my_assoc_mem, concat_val, &hit, &code);
+        hash_lookup(hash_table, concat_val, &hit, &code);
+        if (!hit) {
+            assoc_lookup(&my_assoc_mem, concat_val, &hit, &code);
+        }
+        //***************************************************************
         if (!hit) {
             lzw_codes[j] = prefix_code;
 
             bool collision = 0;
-            insert(hash_table, &my_assoc_mem, concat_val, next_code, &collision);
+            //***************************************************************
+            //insert(hash_table, &my_assoc_mem, concat_val, next_code, &collision);
+            hash_insert(hash_table, concat_val, next_code, &collision);
+            if (collision) {
+                assoc_insert(&my_assoc_mem, concat_val, next_code, &collision);
+            }
+            //***************************************************************
             if (collision) {
                 printf("FAILED TO INSERT!!\n");
                 *failure = 1;
