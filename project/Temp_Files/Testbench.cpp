@@ -88,6 +88,7 @@ int main() {
     lzw(file_data, 0, file_sz, &lzw_codes[0], &packet_len, &failure, &fill);
 
     std::vector<int> output_code = encoding(s);
+    cout << packet_len << "|" << output_code.size() << endl;
 
     if (failure) {
         cout << "TEST FAILED!!" << endl;

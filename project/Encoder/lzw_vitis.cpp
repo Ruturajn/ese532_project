@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <hls_stream.h>
 
 #define CAPACITY                                                                                                       \
     8192 // hash output is 15 bits, and we have 1 entry per bucket, so capacity
@@ -201,18 +202,19 @@ void lookup(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, bo
     }
 }
 
-void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes, uint32_t *code_length,
-         uint8_t *failure, unsigned int *associative_mem) {
+static void lzw_compute(hls::stream<unsigned char> &in_stream, uint32_t start_idx, uint32_t end_idx,
+                        hls::stream<uint32_t> &out_stream, uint32_t *code_length,
+                        uint8_t *failure, unsigned int *associative_mem) {
 
-#pragma HLS INTERFACE m_axi port = chunk depth = 4096 bundle = p0
-#pragma HLS INTERFACE m_axi port = lzw_codes depth = 8192 bundle = p1
-#pragma HLS INTERFACE m_axi port = code_length depth = 1 bundle = p1
-#pragma HLS INTERFACE m_axi port = failure depth = 1 bundle = p0
-#pragma HLS INTERFACE m_axi port = associative_mem depth = 1 bundle = p1
+//#pragma HLS INTERFACE m_axi port = chunk depth = 4096 bundle = p0
+//#pragma HLS INTERFACE m_axi port = lzw_codes depth = 8192 bundle = p1
+//#pragma HLS INTERFACE m_axi port=code_length depth=1 bundle=p1
+//#pragma HLS INTERFACE m_axi port=failure depth=1 bundle=p0
+//#pragma HLS INTERFACE m_axi port=associative_mem depth=1 bundle=p1
 
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY][2];
-#pragma HLS array_partition variable=hash_table complete dim = 2
+#pragma HLS array_partition variable=hash_table complete dim=2
     assoc_mem my_assoc_mem;
 
     *failure = 0;
@@ -234,7 +236,7 @@ LOOP2:
 // init the memories with the first 256 codes
 LOOP3:
     for (unsigned long i = 0; i < 256; i++) {
-#pragma HLS PIPELINE II = 1
+#pragma HLS PIPELINE II=1
         bool collision = 0;
         unsigned int key = (i << 8) + 0UL; // lower 8 bits are the next char,
                                            // the upper bits are the prefix code
@@ -248,7 +250,8 @@ LOOP3:
     }
     int next_code = 256;
 
-    unsigned int prefix_code = (unsigned int)chunk[start_idx];
+    /* unsigned int prefix_code = (unsigned int)chunk[start_idx]; */
+    unsigned int prefix_code = (unsigned int)in_stream.read();
     unsigned int concat_val = 0;
     unsigned int code = 0;
     unsigned char next_char = 0;
@@ -256,7 +259,8 @@ LOOP3:
 
 LOOP4:
     for (int i = start_idx; i < end_idx - 1; i++) {
-        next_char = chunk[i + 1];
+        /* next_char = chunk[i + 1]; */
+        next_char = in_stream.read();
         bool hit = 0;
         concat_val = (prefix_code << 8) + next_char;
         //***************************************************************
@@ -267,7 +271,8 @@ LOOP4:
         }
         //***************************************************************
         if (!hit) {
-            lzw_codes[j] = prefix_code;
+            /* lzw_codes[j] = prefix_code; */
+            out_stream.write(prefix_code);
 
             bool collision = 0;
             //***************************************************************
@@ -289,7 +294,51 @@ LOOP4:
             prefix_code = code;
         }
     }
-    lzw_codes[j] = prefix_code;
+    /* lzw_codes[j] = prefix_code; */
+    out_stream.write(prefix_code);
     *code_length = j + 1;
     *associative_mem = my_assoc_mem.fill;
+}
+
+static void load_data(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, hls::stream<unsigned char> &in_stream) {
+
+    for (int i = start_idx; i < end_idx; i++)
+        in_stream.write(chunk[i]);
+}
+
+static void store_data(hls::stream<uint32_t> &out_stream, uint32_t temp_code_length, uint32_t *lzw_codes, uint32_t *code_length,
+                       unsigned int temp_associative_mem, unsigned int *associative_mem, uint8_t temp_failure,
+                       uint8_t *failure) {
+
+    for (int i = 0; i < temp_code_length; i++)
+        lzw_codes[i] = out_stream.read();
+
+    *code_length = temp_code_length;
+    *failure = temp_failure;
+    *associative_mem = temp_associative_mem;
+}
+
+void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes, uint32_t *code_length,
+         uint8_t *failure, unsigned int *associative_mem) {
+
+#pragma HLS INTERFACE m_axi port=chunk depth=4096 bundle=p0
+#pragma HLS INTERFACE m_axi port=lzw_codes depth=8192 bundle=p1
+#pragma HLS INTERFACE m_axi port=code_length depth=1 bundle=p1
+#pragma HLS INTERFACE m_axi port=failure depth=1 bundle=p1
+#pragma HLS INTERFACE m_axi port=associative_mem depth=1 bundle=p1
+
+    hls::stream<unsigned char>in_stream("load");
+    hls::stream<uint32_t>out_stream("store");
+
+#pragma HLS STREAM variable=in_stream depth=4096
+#pragma HLS STREAM variable=out_stream depth=8192
+
+    uint32_t temp_code_length = 0;
+    uint8_t temp_failure = 0;
+    unsigned int temp_associative_mem = 0;
+
+#pragma HLS DATAFLOW
+    load_data(chunk, start_idx, end_idx, in_stream);
+    lzw_compute(in_stream, start_idx, end_idx, out_stream, &temp_code_length, &temp_failure, &temp_associative_mem);
+    store_data(out_stream, temp_code_length, lzw_codes, code_length, temp_associative_mem, associative_mem, temp_failure, failure);
 }
