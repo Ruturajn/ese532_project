@@ -4,7 +4,7 @@
 #include <hls_stream.h>
 
 #define CAPACITY                                                                                                       \
-    8192 // hash output is 15 bits, and we have 1 entry per bucket, so capacity
+    16384  // hash output is 15 bits, and we have 1 entry per bucket, so capacity
          // is 2^15
 #define SEED 524057
 #define ASSOCIATIVE_MEM_STORE 64
@@ -49,7 +49,7 @@ unsigned int my_hash(unsigned long key) {
     h ^= h >> 13;
     h *= 0xc2b2ae35;
     h ^= h >> 16;
-    return h & 0x1FFF;
+    return h & 0x3FFF;
 }
 
 void hash_lookup(unsigned long (*hash_table)[2], unsigned int key, bool *hit, unsigned int *result) {
@@ -234,20 +234,20 @@ LOOP2:
     }
 
 // init the memories with the first 256 codes
-LOOP3:
-    for (unsigned long i = 0; i < 256; i++) {
-#pragma HLS PIPELINE II=1
-        bool collision = 0;
-        unsigned int key = (i << 8) + 0UL; // lower 8 bits are the next char,
-                                           // the upper bits are the prefix code
-        //***************************************************************
-        //insert(hash_table, &my_assoc_mem, key, i, &collision);
-        hash_insert(hash_table, key, i, &collision);
-        if (collision) {
-            assoc_insert(&my_assoc_mem, key, i, &collision);
-        }
-        //***************************************************************
-    }
+//LOOP3:
+//    for (unsigned long i = 0; i < 256; i++) {
+//#pragma HLS PIPELINE II=1
+//        bool collision = 0;
+//        unsigned int key = (i << 8) + 0UL; // lower 8 bits are the next char,
+//                                           // the upper bits are the prefix code
+//        //***************************************************************
+//        //insert(hash_table, &my_assoc_mem, key, i, &collision);
+//        hash_insert(hash_table, key, i, &collision);
+//        if (collision) {
+//            assoc_insert(&my_assoc_mem, key, i, &collision);
+//        }
+//        //***************************************************************
+//    }
     int next_code = 256;
 
     /* unsigned int prefix_code = (unsigned int)chunk[start_idx]; */
@@ -331,7 +331,7 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *l
     hls::stream<uint32_t>out_stream("store");
 
 #pragma HLS STREAM variable=in_stream depth=4096
-#pragma HLS STREAM variable=out_stream depth=8192
+#pragma HLS STREAM variable=out_stream depth=4096
 
     uint32_t temp_code_length = 0;
     uint8_t temp_failure = 0;

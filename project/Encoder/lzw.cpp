@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -340,7 +341,7 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *l
     unsigned char next_char = 0;
     uint32_t j = 0;
 
-    for (int i = start_idx; i < end_idx - 1; i++) {
+    for (uint32_t i = start_idx; i < end_idx - 1; i++) {
         //        if(i != end_idx - 1)
         //        {
         //        	next_char = chunk[i + 1];

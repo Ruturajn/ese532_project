@@ -21,10 +21,23 @@
 #define DONE_BIT_L (1 << 7)
 #define DONE_BIT_H (1 << 15)
 
+#define CL_HPP_CL_1_2_DEFAULT_BUILD
+#define CL_HPP_TARGET_OPENCL_VERSION 120
+#define CL_HPP_MINIMUM_OPENCL_VERSION 120
+#define CL_HPP_ENABLE_PROGRAM_CONSTRUCTION_FROM_ARRAY_COMPATIBILITY 1
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+
 using namespace std;
 
 uint64_t dedup_bytes = 0;
 uint64_t lzw_bytes = 0;
+
+stopwatch time_cdc;
+stopwatch time_lzw;
+stopwatch time_sha;
+stopwatch time_dedup;
+stopwatch total_time;
+
 
 void handle_input(int argc, char *argv[], int *blocksize, char **filename,
                   char **kernel_name) {
@@ -57,12 +70,12 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
 
-    int data_idx = 0;
+    uint32_t data_idx = 0;
     uint16_t current_val = 0;
     int bits_left = 0;
     int current_val_bits_left = 0;
 
-    for (int i = 0; i < out_packet_length; i++) {
+    for (uint32_t i = 0; i < out_packet_length; i++) {
         current_val = out_packet[i];
         current_val_bits_left = CODE_LENGTH;
 
@@ -124,12 +137,6 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
     // Step 3: Run the kernel
     // ------------------------------------------------------------------------------------
 
-    stopwatch time_cdc;
-    stopwatch time_lzw;
-    stopwatch time_sha;
-    stopwatch time_dedup;
-    stopwatch total_time;
-
     std::vector<cl::Event> write_event(1);
     std::vector<cl::Event> compute_event(1);
     std::vector<cl::Event> done_event(1);
@@ -144,7 +151,7 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
 
     memcpy(host_input_chunk, input, sizeof(unsigned char) * length_sum);
 
-    for (int i = 0; i < vect.size() - 1; i++) {
+    for (int i = 0; i < (int)(vect.size() - 1); i++) {
 
         // RUN SHA
         time_sha.start();
@@ -155,6 +162,13 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
         time_dedup.start();
         chunk_idx = dedup(sha_fingerprint);
         time_dedup.stop();
+
+        // CDC Output    - [ 0, 23, 500, 2000, 4000, 8000, 9000, 12000, 15000, 16000]
+        // Chunk Indices - [    -1,  23,   -1,   -1,   -1,   44,    -1,    99,    -1]
+
+        // Create a vector that holds all the data. This will store header with
+        // data in the case of a unique chunk and store only the header in case
+        // of a duplicate chunk.
 
         if (chunk_idx == -1) {
             /* out_packet = (uint32_t *)calloc(MAX_CHUNK_SIZE,
@@ -179,18 +193,12 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
 
             q.enqueueTask(kernel_lzw, &write_event, &compute_event[0]);
 
-            // Method 2
-            compute_event[0].wait();
-            total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() -
-            compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>();
-
-            // q.enqueueTask(kernel_lzw, &write_event, &compute_event[0]);
+            // Profiling the kernel.
+            // compute_event[0].wait();
+            // total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() -
+            // compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
             q.enqueueMigrateMemObjects({lzw_output_buffer, out_packet_length_buf, failure_buf, assoc_mem_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
-            // q.enqueueMigrateMemObjects({out_packet_length_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event,
-            //                            &done_event[0]);
-            // q.enqueueMigrateMemObjects({failure_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
-            // q.enqueueMigrateMemObjects({assoc_mem_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
             clWaitForEvents(1, (const cl_event *)&done_event[0]);
             time_lzw.stop();
 
@@ -221,22 +229,11 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
             dedup_bytes += 4;
         }
     }
-    total_time.stop();
-    // q.finish();
 
-    // Print Latencies
-    std::cout << "Total latency of CDC is: " << time_cdc.latency() << " ns." << std::endl;
-    std::cout << "Total latency of LZW is: " << time_lzw.latency() << " ns." << std::endl;
-    std::cout << "Total latency of SHA256 is: " << time_sha.latency() << " ns." << std::endl;
-    std::cout << "Total latency of DeDup is: " << time_dedup.latency() << " ns." << std::endl;
-    std::cout << "Total time taken: " << total_time.latency() << " ns." << std::endl;
-    std::cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2 << " ns." << std::endl;
-    std::cout << "---------------------------------------------------------------" << std::endl;
-    std::cout << "Average latency of CDC per loop iteration is: " << time_cdc.avg_latency() << " ns." << std::endl;
-    std::cout << "Average latency of LZW per loop iteration is: " << time_lzw.avg_latency() << " ns." << std::endl;
-    std::cout << "Average latency of SHA256 per loop iteration is: " << time_sha.avg_latency() << " ns." << std::endl;
-    std::cout << "Average latency of DeDup per loop iteration is: " << time_dedup.avg_latency() << " ns." << std::endl;
-    std::cout << "Average latency: " << total_time.avg_latency() << " ns." << std::endl;
+    // For loop that iterates over the chunks and performs LZW.
+
+    total_time.stop();
+    cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2 << " ms." << endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -289,7 +286,7 @@ int main(int argc, char *argv[]) {
     char *fileBuf = read_binary_file(binaryFile, fileBufSize);
     cl::Program::Binaries bins{{fileBuf, fileBufSize}};
     cl::Program program(context, devices, bins, NULL, &err);
-    cl::CommandQueue q(context, device, CL_QUEUE_PROFILING_ENABLE, &err);
+    cl::CommandQueue q(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err);
     cl::Kernel krnl_lzw(program, "lzw", &err);
 
     // ------------------------------------------------------------------------------------
@@ -367,7 +364,28 @@ int main(int argc, char *argv[]) {
 
     // fclose(fptr);
     fclose(fptr_write);
+    q.enqueueUnmapMemObject(lzw_input_buffer, host_input_chunk);
+    q.enqueueUnmapMemObject(lzw_output_buffer, host_output_lzw);
+    q.enqueueUnmapMemObject(out_packet_length_buf, out_packet_length);
+    q.enqueueUnmapMemObject(failure_buf, failure);
+    q.enqueueUnmapMemObject(assoc_mem_buf, assoc_mem);
     q.finish();
+
+    // Print Latencies
+    cout << "--------------- Total Latencies ---------------" << endl;
+    cout << "Total latency of CDC is: " << time_cdc.latency() << " ms." << endl;
+    cout << "Total latency of LZW is: " << time_lzw.latency() << " ms." << endl;
+    cout << "Total latency of SHA256 is: " << time_sha.latency() << " ms." << endl;
+    cout << "Total latency of DeDup is: " << time_dedup.latency() << " ms." << endl;
+    cout << "Total time taken: " << total_time.latency() << " ns." << endl;
+    cout << "---------------- Average Latencies ------------" << endl;
+    cout << "Average latency of CDC per loop iteration is: " << time_cdc.avg_latency() << " ms." << endl;
+    cout << "Average latency of LZW per loop iteration is: " << time_lzw.avg_latency() << " ms." << endl;
+    cout << "Average latency of SHA256 per loop iteration is: " << time_sha.avg_latency() << " ms." << endl;
+    cout << "Average latency of DeDup per loop iteration is: " << time_dedup.avg_latency() << " ms." << endl;
+    cout << "Average latency: " << total_time.avg_latency() << " ms." << std::endl;
+
+    std::cout << "\n\n";
 
     std::cout << "--------------- Key Throughputs ---------------" << std::endl;
     float ethernet_latency = ethernet_timer.latency() / 1000.0;
