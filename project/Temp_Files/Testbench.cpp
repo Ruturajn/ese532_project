@@ -82,24 +82,27 @@ int main() {
     }
 
     uint32_t lzw_codes[8192];
-    uint32_t packet_len = 0;
-    unsigned int fill = 0;
-    uint8_t failure = 0;
-    lzw(file_data, 0, file_sz, &lzw_codes[0], &packet_len, &failure, &fill);
+    // uint32_t packet_len = 0;
+    // unsigned int fill = 0;
+    // uint8_t failure = 0;
+    LZWData data;
+    data.start_idx = 0;
+    data.end_idx = file_sz;
+    lzw(file_data, lzw_codes, &data);
 
     std::vector<int> output_code = encoding(s);
-    cout << packet_len << "|" << output_code.size() << endl;
+    cout << data.out_packet_length << "|" << output_code.size() << endl;
 
-    if (failure) {
+    if (data.failure) {
         cout << "TEST FAILED!!" << endl;
         cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
         exit(EXIT_FAILURE);
     }
 
-    if (packet_len != output_code.size()) {
+    if (data.out_packet_length != output_code.size()) {
         cout << "TEST FAILED!!" << endl;
         cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
-        cout << packet_len << "|" << output_code.size() << endl;
+        cout << data.out_packet_length << "|" << output_code.size() << endl;
         exit(EXIT_FAILURE);
     }
 
@@ -112,7 +115,7 @@ int main() {
     }
 
     cout << "TEST PASSED!!" << endl;
-    cout << "Associate Memory count : " << fill << endl;
+    cout << "Associate Memory count : " << data.assoc_mem_count << endl;
 
     free(file_data);
     return 0;

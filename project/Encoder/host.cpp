@@ -38,6 +38,16 @@ stopwatch time_sha;
 stopwatch time_dedup;
 stopwatch total_time;
 
+typedef struct __attribute__((packed)) RawData {
+    int length_sum; /// The total length of the input buffer.
+    unsigned char *pipeline_buffer; /// Input data that needs to be processed.
+    FILE *fptr_write; /// File pointer to write the output.
+} RawData;
+
+typedef struct CLDevice {
+    cl::Kernel kernel;
+    cl::CommandQueue queue;
+} CLDevice;
 
 void handle_input(int argc, char *argv[], int *blocksize, char **filename,
                   char **kernel_name) {
@@ -117,21 +127,13 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-static void compression_pipeline(unsigned char *input, int length_sum, FILE *fptr_write, cl::CommandQueue q,
-                                 cl::Kernel kernel_lzw, cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
-                                 unsigned char *host_input_chunk, uint32_t *host_output_lzw, cl::Buffer out_packet_length_buf,
-                                 uint32_t *out_packet_length, cl::Buffer failure_buf, uint8_t *failure,
-                                 cl::Buffer assoc_mem_buf, unsigned int *assoc_mem) {
+static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer device_data, LZWData *h_data){
 
     vector<uint32_t> vect;
     string sha_fingerprint;
     int64_t chunk_idx = 0;
-    /* uint32_t out_packet_length = 0; */
-    /* uint32_t *out_packet = NULL; */
     uint32_t packet_len = 0;
     uint32_t header = 0;
-    /* uint8_t failure = 0; */
-    /* unsigned int assoc_mem = 0; */
 
     // ------------------------------------------------------------------------------------
     // Step 3: Run the kernel
@@ -146,16 +148,16 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
     total_time.start();
     // RUN CDC
     time_cdc.start();
-    cdc(input, length_sum, vect);
+    cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
     time_cdc.stop();
 
-    memcpy(host_input_chunk, input, sizeof(unsigned char) * length_sum);
+    memcpy(h_data->host_input, r_data->pipeline_buffer, sizeof(unsigned char) * r_data->length_sum);
 
     for (int i = 0; i < (int)(vect.size() - 1); i++) {
 
         // RUN SHA
         time_sha.start();
-        sha_fingerprint = sha_256(input, vect[i], vect[i + 1]);
+        sha_fingerprint = sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
         time_sha.stop();
 
         // RUN DEDUP
@@ -171,61 +173,52 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
         // of a duplicate chunk.
 
         if (chunk_idx == -1) {
-            /* out_packet = (uint32_t *)calloc(MAX_CHUNK_SIZE,
-             * sizeof(uint32_t)); */
-            /* CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW
-             * codes"); */
-
             time_lzw.start();
 
-            kernel_lzw.setArg(0, lzw_input_buffer);
-            kernel_lzw.setArg(1, sizeof(uint32_t), &vect[i]);
-            kernel_lzw.setArg(2, sizeof(uint32_t), &vect[i + 1]);
-            kernel_lzw.setArg(3, lzw_output_buffer);
-            kernel_lzw.setArg(4, out_packet_length_buf);
-            kernel_lzw.setArg(5, failure_buf);
-            kernel_lzw.setArg(6, assoc_mem_buf);
+            h_data->start_idx = vect[i];
+            h_data->end_idx = vect[i+1];
 
-            q.enqueueMigrateMemObjects({lzw_input_buffer}, 0 /* 0 means from host*/, NULL, &write_event[0]);
+            dev.kernel.setArg(0, device_data);
+
+            dev.queue.enqueueMigrateMemObjects({device_data}, 0 /* 0 means from host*/, NULL, &write_event[0]);
 
             // lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length,
             // &failure, &assoc_mem);
 
-            q.enqueueTask(kernel_lzw, &write_event, &compute_event[0]);
+            dev.queue.enqueueTask(dev.kernel, &write_event, &compute_event[0]);
 
             // Profiling the kernel.
             // compute_event[0].wait();
             // total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() -
             // compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
-            q.enqueueMigrateMemObjects({lzw_output_buffer, out_packet_length_buf, failure_buf, assoc_mem_buf}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
+            dev.queue.enqueueMigrateMemObjects({device_data}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
             clWaitForEvents(1, (const cl_event *)&done_event[0]);
             time_lzw.stop();
 
-            cout << "Associative Mem count is : " << *assoc_mem << endl;
+            cout << "Associative Mem count is : " << h_data->assoc_mem_count << endl;
 
-            if (*failure) {
+            if (h_data->failure) {
                 printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
                 exit(EXIT_FAILURE);
             }
 
-            packet_len = ((*out_packet_length * 12) / 8);
-            packet_len = (chunk_idx == -1 && (*out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
+            packet_len = ((h_data->out_packet_length * 12) / 8);
+            packet_len = (chunk_idx == -1 && (h_data->out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
 
-            unsigned char *data_packet = create_packet(chunk_idx, *out_packet_length, host_output_lzw, packet_len);
+            unsigned char *data_packet = create_packet(chunk_idx, h_data->out_packet_length, h_data->host_output, packet_len);
 
             header = packet_len << 1;
-            fwrite(&header, sizeof(uint32_t), 1, fptr_write);
+            fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
             lzw_bytes += 4;
 
-            fwrite(data_packet, sizeof(unsigned char), packet_len, fptr_write);
+            fwrite(data_packet, sizeof(unsigned char), packet_len, r_data->fptr_write);
             lzw_bytes += packet_len;
 
             free(data_packet);
-            /* free(out_packet); */
         } else {
             header = (chunk_idx << 1) | 1;
-            fwrite(&header, sizeof(uint32_t), 1, fptr_write);
+            fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
             dedup_bytes += 4;
         }
     }
@@ -245,7 +238,6 @@ int main(int argc, char *argv[]) {
     int done = 0;
     int length = -1;
     uint64_t offset = 0;
-    int sum = 0;
     ESE532_Server server;
 
     int blocksize = BLOCKSIZE;
@@ -255,14 +247,17 @@ int main(int argc, char *argv[]) {
     // set blocksize if decalred through command line
     handle_input(argc, argv, &blocksize, &file, &kernel_name);
 
-    FILE *fptr_write = fopen(file, "wb");
-    if (fptr_write == NULL) {
+    RawData *r_data = (RawData *)calloc(1, sizeof(RawData));
+    CHECK_MALLOC(r_data, "Unable to allocate memory for raw data");
+
+    r_data->fptr_write = fopen(file, "wb");
+    if (r_data->fptr_write == NULL) {
         printf("Error creating file for compressed output!!\n");
         exit(EXIT_FAILURE);
     }
 
-    unsigned char *pipeline_buffer = (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
-    CHECK_MALLOC(pipeline_buffer, "Unable to allocate memory for pipeline buffer");
+    r_data->pipeline_buffer = (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
+    CHECK_MALLOC(r_data->pipeline_buffer, "Unable to allocate memory for pipeline buffer");
 
     for (int i = 0; i < (NUM_PACKETS); i++) {
         input[i] = (unsigned char *)calloc((blocksize + HEADER), sizeof(unsigned char));
@@ -286,38 +281,19 @@ int main(int argc, char *argv[]) {
     char *fileBuf = read_binary_file(binaryFile, fileBufSize);
     cl::Program::Binaries bins{{fileBuf, fileBufSize}};
     cl::Program program(context, devices, bins, NULL, &err);
-    cl::CommandQueue q(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err);
-    cl::Kernel krnl_lzw(program, "lzw", &err);
+    CLDevice dev;
+    dev.queue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err);
+    dev.kernel = cl::Kernel(program, "lzw", &err);
 
     // ------------------------------------------------------------------------------------
     // Step 2: Create buffers and initialize test values
     // ------------------------------------------------------------------------------------
 
-    cl::Buffer lzw_input_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * NUM_PACKETS * blocksize, NULL, &err);
-    cl::Buffer lzw_output_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
+    cl::Buffer device_lzw_data = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(LZWData), NULL, &err);
+    LZWData *host_lzw_data = (LZWData *)dev.queue.enqueueMapBuffer(device_lzw_data, CL_TRUE, CL_MAP_WRITE, 0, sizeof(LZWData));
 
-    // Writing to host_input_chunk will fill up lzw_input_buffer.
-    unsigned char *host_input_chunk = (unsigned char *)q.enqueueMapBuffer(lzw_input_buffer, CL_TRUE, CL_MAP_WRITE, 0,
-                                                                          sizeof(unsigned char) * NUM_PACKETS * blocksize);
-    // LZW's output will be written into host_output_lzw.
-    uint32_t *host_output_lzw =
-        (uint32_t *)q.enqueueMapBuffer(lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
-
-    cl::Buffer out_packet_length_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t), NULL, &err);
-    uint32_t *out_packet_length =
-        (uint32_t *)q.enqueueMapBuffer(out_packet_length_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t));
-
-    cl::Buffer failure_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint8_t), NULL, &err);
-    uint8_t *failure = (uint8_t *)q.enqueueMapBuffer(failure_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(uint8_t));
-
-    cl::Buffer assoc_mem_buf = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(unsigned int), NULL, &err);
-    uint32_t *assoc_mem =
-        (uint32_t *)q.enqueueMapBuffer(assoc_mem_buf, CL_TRUE, CL_MAP_READ, 0, sizeof(unsigned int));
-
-    // last message
+    // Loop until last message
     while (!done) {
-        // while (length != 0) {
-        // reset ring buffer
 
         ethernet_timer.start();
         server.get_packet(input[writer]);
@@ -332,44 +308,34 @@ int main(int argc, char *argv[]) {
         length &= ~DONE_BIT_H;
 
         offset += length;
-        sum += length;
+        r_data->length_sum += length;
 
         // Perform the actual computation here. The idea is to maintain a
         // buffer, that will hold multiple packets, so that CDC can chunklength)
         // at appropriate boundaries. Call the compression pipeline function
         // after the buffer is completely filled.
         if (length != 0)
-            memcpy(pipeline_buffer + (writer * blocksize), input[writer] + 2, length);
-        // memcpy(pipeline_buffer + (writer * 1024), input[writer], length);
+            memcpy(r_data->pipeline_buffer + (writer * blocksize), input[writer] + 2, length);
 
         if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) || done == 1) {
-            // if (writer == (NUM_PACKETS - 1) || (length < 1024 && length > 0))
-            // {
             compression_timer.start();
-            // compression_pipeline(pipeline_buffer, sum, fptr_write);
-            compression_pipeline(pipeline_buffer, sum, fptr_write, q, krnl_lzw, lzw_input_buffer, lzw_output_buffer,
-                                 host_input_chunk, host_output_lzw, out_packet_length_buf, out_packet_length, failure_buf,
-                                 failure, assoc_mem_buf, assoc_mem);
+            compression_pipeline(r_data, dev, device_lzw_data, host_lzw_data);
             compression_timer.stop();
             writer = 0;
-            sum = 0;
+            r_data->length_sum = 0;
         } else
             writer += 1;
     }
 
-    free(pipeline_buffer);
+    free(r_data->pipeline_buffer);
+    free(r_data);
 
     for (int i = 0; i < (NUM_PACKETS); i++)
         free(input[i]);
 
-    // fclose(fptr);
-    fclose(fptr_write);
-    q.enqueueUnmapMemObject(lzw_input_buffer, host_input_chunk);
-    q.enqueueUnmapMemObject(lzw_output_buffer, host_output_lzw);
-    q.enqueueUnmapMemObject(out_packet_length_buf, out_packet_length);
-    q.enqueueUnmapMemObject(failure_buf, failure);
-    q.enqueueUnmapMemObject(assoc_mem_buf, assoc_mem);
-    q.finish();
+    fclose(r_data->fptr_write);
+    dev.queue.enqueueUnmapMemObject(device_lzw_data, host_lzw_data);
+    dev.queue.finish();
 
     // Print Latencies
     cout << "--------------- Total Latencies ---------------" << endl;
@@ -390,14 +356,13 @@ int main(int argc, char *argv[]) {
     std::cout << "--------------- Key Throughputs ---------------" << std::endl;
     float ethernet_latency = ethernet_timer.latency() / 1000.0;
     float compression_latency = compression_timer.latency() / 1000.0;
-    float throughput = (offset * 8 / 1000000.0) / compression_latency; // Mb/s
-    // std::cout << "Throughput of the Encoder: " << throughput << " Mb/s."
-    //         << " (Ethernet Latency: " << ethernet_latency << "s)." <<
-    //         std::endl;
+    float compression_throughput = (offset * 8 / 1000000.0) / compression_latency; // Mb/s
+    float ethernet_throughput = (offset * 8 / 1000000.0) / ethernet_latency; // Mb/s
     cout << "Ethernet Latency: " << ethernet_latency << "s." << endl;
     cout << "Bytes Received: " << offset << "B." << endl;
     cout << "Latency for Compression: " << compression_latency << "s." << endl;
-    cout << "Application Throughput: " << throughput << "Mb/s." << endl;
+    cout << "Ethernet Throughput: " << ethernet_throughput << "Mb/s." << endl;
+    cout << "Application Throughput: " << compression_throughput << "Mb/s." << endl;
     cout << "Bytes Contributed by Deduplication: " << dedup_bytes << "B." << endl;
     cout << "Bytes Contributed by LZW: " << lzw_bytes << "B." << endl;
 

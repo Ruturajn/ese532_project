@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <hls_stream.h>
+#include "common.h"
 
 #define CAPACITY                                                                                                       \
     16384  // hash output is 15 bits, and we have 1 entry per bucket, so capacity
@@ -35,7 +36,7 @@ static inline uint32_t murmur_32_scramble(uint32_t k) {
     return k;
 }
 
-unsigned int my_hash(unsigned long key) {
+unsigned int inline my_hash(unsigned long key) {
     uint32_t h = SEED;
     uint32_t k = key;
     h ^= murmur_32_scramble(k);
@@ -52,12 +53,12 @@ unsigned int my_hash(unsigned long key) {
     return h & 0x3FFF;
 }
 
-void hash_lookup(unsigned long (*hash_table)[2], unsigned int key, bool *hit, unsigned int *result) {
+void inline hash_lookup(unsigned long *hash_table_1, unsigned long *hash_table_2, unsigned int key, bool *hit, unsigned int *result) {
     key &= 0xFFFFF; // make sure key is only 20 bits
 
     unsigned int hash_val = my_hash(key);
 
-    unsigned long lookup = hash_table[hash_val][0];
+    unsigned long lookup = hash_table_1[hash_val];
 
     // [valid][value][key]
     unsigned int stored_key = lookup & 0xFFFFF;       // stored key is 20 bits
@@ -70,7 +71,7 @@ void hash_lookup(unsigned long (*hash_table)[2], unsigned int key, bool *hit, un
         return;
     }
 
-    lookup = hash_table[hash_val][1];
+    lookup = hash_table_2[hash_val];
 
     // [valid][value][key]
     stored_key = lookup & 0xFFFFF;       // stored key is 20 bits
@@ -85,33 +86,32 @@ void hash_lookup(unsigned long (*hash_table)[2], unsigned int key, bool *hit, un
     *result = 0;
 }
 
-void hash_insert(unsigned long (*hash_table)[2], unsigned int key, unsigned int value, bool *collision) {
+void inline hash_insert(unsigned long *hash_table_1, unsigned long *hash_table_2, unsigned int key, unsigned int value, bool *collision) {
     key &= 0xFFFFF; // make sure key is only 20 bits
     value &= 0xFFF; // value is only 12 bits
 
     unsigned int hash_val = my_hash(key);
 
-    unsigned long *lookup_ptr = hash_table[hash_val];
-    unsigned long lookup = lookup_ptr[0];
+    unsigned long lookup = hash_table_1[hash_val];
     unsigned int valid = (lookup >> (20 + 12)) & 0x1;
 
     if (!valid) {
-        lookup_ptr[0] = (1UL << (20 + 12)) | (value << 20) | key;
+        hash_table_1[hash_val] = (1UL << (20 + 12)) | (value << 20) | key;
         *collision = 0;
         return;
     }
 
-	lookup = lookup_ptr[1];
+	lookup = hash_table_2[hash_val];
 	valid = (lookup >> (20 + 12)) & 0x1;
 	if (valid) {
 		*collision = 1;
 		return;
 	}
-	lookup_ptr[1] = (1UL << (20 + 12)) | (value << 20) | key;
+	hash_table_2[hash_val] = (1UL << (20 + 12)) | (value << 20) | key;
 	*collision = 0;
 }
 
-void assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
+void inline assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
     key &= 0xFFFFF; // make sure key is only 20 bits
     value &= 0xFFF; // value is only 12 bits
 
@@ -135,7 +135,7 @@ void assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value, bool *co
     *collision = 1;
 }
 
-void assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
+void inline assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
     key &= 0xFFFFF; // make sure key is only 20 bits
 	unsigned int key_high = (key >> 18) & 0x1FF;
 	unsigned int key_middle = (key >> 9) & 0x1FF;
@@ -179,51 +179,40 @@ void assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit, unsigned int *res
         return;
     }
     *hit = 0;
-
-    //LOOP5:
-    //    for (; address < ASSOCIATIVE_MEM_STORE; address++) {
-    //        if ((match >> address) & 0x1) {
-    //            break;
-    //        }
-    //    }
 }
 
-void insert(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
-    hash_insert(hash_table, key, value, collision);
+void inline insert(unsigned long *hash_table_1, unsigned long *hash_table_2, assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
+    hash_insert(hash_table_1, hash_table_2, key, value, collision);
     if (*collision) {
         assoc_insert(mem, key, value, collision);
     }
 }
 
-void lookup(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
-    hash_lookup(hash_table, key, hit, result);
+void inline lookup(unsigned long *hash_table_1, unsigned long *hash_table_2, assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
+    hash_lookup(hash_table_1, hash_table_2, key, hit, result);
     if (!*hit) {
         assoc_lookup(mem, key, hit, result);
     }
 }
 
-static void lzw_compute(hls::stream<unsigned char> &in_stream, uint32_t start_idx, uint32_t end_idx,
-                        hls::stream<uint32_t> &out_stream, uint32_t *code_length,
-                        uint8_t *failure, unsigned int *associative_mem) {
+void lzw(unsigned char *input, uint32_t *lzw_codes, LZWData *data) {
 
-//#pragma HLS INTERFACE m_axi port = chunk depth = 4096 bundle = p0
-//#pragma HLS INTERFACE m_axi port = lzw_codes depth = 8192 bundle = p1
-//#pragma HLS INTERFACE m_axi port=code_length depth=1 bundle=p1
-//#pragma HLS INTERFACE m_axi port=failure depth=1 bundle=p0
-//#pragma HLS INTERFACE m_axi port=associative_mem depth=1 bundle=p1
+#pragma HLS INTERFACE m_axi port=input depth=4096 bundle=p0
+#pragma HLS INTERFACE m_axi port=lzw_codes depth=8192 bundle=p1
 
     // create hash table and assoc mem
-    unsigned long hash_table[CAPACITY][2];
-#pragma HLS array_partition variable=hash_table complete dim=2
+    unsigned long hash_table_1[CAPACITY];
+    unsigned long hash_table_2[CAPACITY];
+    // unsigned long hash_table_2[CAPACITY];
     assoc_mem my_assoc_mem;
 
-    *failure = 0;
+    data->failure = 0;
 
 // make sure the memories are clear
 LOOP1:
     for (int i = 0; i < CAPACITY; i++) {
-        hash_table[i][0] = 0;
-        hash_table[i][1] = 0;
+        hash_table_1[i] = 0;
+        hash_table_2[i] = 0;
     }
     my_assoc_mem.fill = 0;
 LOOP2:
@@ -233,59 +222,32 @@ LOOP2:
         my_assoc_mem.lower_key_mem[i] = 0;
     }
 
-// init the memories with the first 256 codes
-//LOOP3:
-//    for (unsigned long i = 0; i < 256; i++) {
-//#pragma HLS PIPELINE II=1
-//        bool collision = 0;
-//        unsigned int key = (i << 8) + 0UL; // lower 8 bits are the next char,
-//                                           // the upper bits are the prefix code
-//        //***************************************************************
-//        //insert(hash_table, &my_assoc_mem, key, i, &collision);
-//        hash_insert(hash_table, key, i, &collision);
-//        if (collision) {
-//            assoc_insert(&my_assoc_mem, key, i, &collision);
-//        }
-//        //***************************************************************
-//    }
     int next_code = 256;
 
-    /* unsigned int prefix_code = (unsigned int)chunk[start_idx]; */
-    unsigned int prefix_code = (unsigned int)in_stream.read();
+    unsigned int prefix_code = (unsigned int)input[data->start_idx];
     unsigned int concat_val = 0;
     unsigned int code = 0;
     unsigned char next_char = 0;
     uint32_t j = 0;
 
 LOOP4:
-    for (int i = start_idx; i < end_idx - 1; i++) {
-        /* next_char = chunk[i + 1]; */
-        next_char = in_stream.read();
+    for (int i = 0; i < (data->end_idx - data->start_idx) - 1; i++) {
+        next_char = input[data->start_idx + i + 1];
         bool hit = 0;
-        concat_val = (prefix_code << 8) + next_char;
+        // concat_val = (prefix_code << 8) + next_char;
         //***************************************************************
-        //lookup(hash_table, &my_assoc_mem, concat_val, &hit, &code);
-        hash_lookup(hash_table, concat_val, &hit, &code);
-        if (!hit) {
-            assoc_lookup(&my_assoc_mem, concat_val, &hit, &code);
-        }
+        lookup(hash_table_1, hash_table_2, &my_assoc_mem, (prefix_code << 8) + next_char, &hit, &code);
         //***************************************************************
         if (!hit) {
-            /* lzw_codes[j] = prefix_code; */
-            out_stream.write(prefix_code);
+            lzw_codes[j] = prefix_code;
 
             bool collision = 0;
             //***************************************************************
-            //insert(hash_table, &my_assoc_mem, concat_val, next_code, &collision);
-            hash_insert(hash_table, concat_val, next_code, &collision);
-            if (collision) {
-                assoc_insert(&my_assoc_mem, concat_val, next_code, &collision);
-            }
+            insert(hash_table_1, hash_table_2, &my_assoc_mem, (prefix_code << 8) + next_char, next_code, &collision);
             //***************************************************************
             if (collision) {
-                printf("FAILED TO INSERT!!\n");
-                *failure = 1;
-                continue;
+                data->failure = 1;
+                //continue;
             }
             next_code += 1;
             ++j;
@@ -294,51 +256,7 @@ LOOP4:
             prefix_code = code;
         }
     }
-    /* lzw_codes[j] = prefix_code; */
-    out_stream.write(prefix_code);
-    *code_length = j + 1;
-    *associative_mem = my_assoc_mem.fill;
-}
-
-static void load_data(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, hls::stream<unsigned char> &in_stream) {
-
-    for (int i = start_idx; i < end_idx; i++)
-        in_stream.write(chunk[i]);
-}
-
-static void store_data(hls::stream<uint32_t> &out_stream, uint32_t temp_code_length, uint32_t *lzw_codes, uint32_t *code_length,
-                       unsigned int temp_associative_mem, unsigned int *associative_mem, uint8_t temp_failure,
-                       uint8_t *failure) {
-
-    for (int i = 0; i < temp_code_length; i++)
-        lzw_codes[i] = out_stream.read();
-
-    *code_length = temp_code_length;
-    *failure = temp_failure;
-    *associative_mem = temp_associative_mem;
-}
-
-void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes, uint32_t *code_length,
-         uint8_t *failure, unsigned int *associative_mem) {
-
-#pragma HLS INTERFACE m_axi port=chunk depth=4096 bundle=p0
-#pragma HLS INTERFACE m_axi port=lzw_codes depth=8192 bundle=p1
-#pragma HLS INTERFACE m_axi port=code_length depth=1 bundle=p1
-#pragma HLS INTERFACE m_axi port=failure depth=1 bundle=p1
-#pragma HLS INTERFACE m_axi port=associative_mem depth=1 bundle=p1
-
-    hls::stream<unsigned char>in_stream("load");
-    hls::stream<uint32_t>out_stream("store");
-
-#pragma HLS STREAM variable=in_stream depth=4096
-#pragma HLS STREAM variable=out_stream depth=4096
-
-    uint32_t temp_code_length = 0;
-    uint8_t temp_failure = 0;
-    unsigned int temp_associative_mem = 0;
-
-#pragma HLS DATAFLOW
-    load_data(chunk, start_idx, end_idx, in_stream);
-    lzw_compute(in_stream, start_idx, end_idx, out_stream, &temp_code_length, &temp_failure, &temp_associative_mem);
-    store_data(out_stream, temp_code_length, lzw_codes, code_length, temp_associative_mem, associative_mem, temp_failure, failure);
+    lzw_codes[j] = prefix_code;
+    data->out_packet_length = j + 1;
+    data->assoc_mem_count = my_assoc_mem.fill;
 }

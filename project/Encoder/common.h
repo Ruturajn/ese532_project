@@ -23,6 +23,14 @@
 
 using namespace std;
 
+typedef struct __attribute__((packed)) LZWData {
+    uint8_t failure; /// This variable stores the status of LZW.
+    uint32_t assoc_mem_count; /// The amount of entries in the associate memory.
+    uint32_t out_packet_length; /// Length of the codes array produced by LZW.
+    uint32_t start_idx;
+    uint32_t end_idx;
+} LZWData;
+
 void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect);
 
 string sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx,
@@ -33,8 +41,11 @@ int64_t dedup(string sha_fingerprint);
 // void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint16_t *lzw_codes,
 //          uint32_t *code_length);
 
-void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
-         uint32_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
-		 unsigned int *associative_mem);
+// void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
+//          uint32_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
+// 		 unsigned int *associative_mem);
+
+// void lzw(LZWData *data);
+void lzw(unsigned char *input, uint32_t *lzw_codes, LZWData *data);
 
 #endif
