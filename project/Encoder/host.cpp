@@ -42,6 +42,8 @@ typedef struct __attribute__((packed)) RawData {
     int length_sum; /// The total length of the input buffer.
     unsigned char *pipeline_buffer; /// Input data that needs to be processed.
     FILE *fptr_write; /// File pointer to write the output.
+    unsigned char *host_input;
+    uint32_t *output_codes;
 } RawData;
 
 typedef struct CLDevice {
@@ -76,7 +78,7 @@ void handle_input(int argc, char *argv[], int *blocksize, char **filename,
 }
 
 static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_length, uint32_t *out_packet,
-                                    uint32_t packet_len) {
+                                    uint32_t packet_len, cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer) {
     unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
 
@@ -127,7 +129,8 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer device_data, LZWData *h_data){
+static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer device_data, LZWData *h_data,
+                                 cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer) {
 
     vector<uint32_t> vect;
     string sha_fingerprint;
@@ -151,7 +154,7 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer devic
     cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
     time_cdc.stop();
 
-    memcpy(h_data->host_input, r_data->pipeline_buffer, sizeof(unsigned char) * r_data->length_sum);
+    memcpy(r_data->host_input, r_data->pipeline_buffer, sizeof(unsigned char) * r_data->length_sum);
 
     for (int i = 0; i < (int)(vect.size() - 1); i++) {
 
@@ -178,9 +181,11 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer devic
             h_data->start_idx = vect[i];
             h_data->end_idx = vect[i+1];
 
-            dev.kernel.setArg(0, device_data);
+            dev.kernel.setArg(0, lzw_input_buffer);
+            dev.kernel.setArg(1, lzw_output_buffer);
+            dev.kernel.setArg(2, device_data);
 
-            dev.queue.enqueueMigrateMemObjects({device_data}, 0 /* 0 means from host*/, NULL, &write_event[0]);
+            dev.queue.enqueueMigrateMemObjects({lzw_input_buffer}, 0 /* 0 means from host*/, NULL, &write_event[0]);
 
             // lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length,
             // &failure, &assoc_mem);
@@ -192,7 +197,7 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer devic
             // total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() -
             // compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
-            dev.queue.enqueueMigrateMemObjects({device_data}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
+            dev.queue.enqueueMigrateMemObjects({lzw_output_buffer, device_data}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
             clWaitForEvents(1, (const cl_event *)&done_event[0]);
             time_lzw.stop();
 
@@ -292,6 +297,14 @@ int main(int argc, char *argv[]) {
     cl::Buffer device_lzw_data = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(LZWData), NULL, &err);
     LZWData *host_lzw_data = (LZWData *)dev.queue.enqueueMapBuffer(device_lzw_data, CL_TRUE, CL_MAP_WRITE, 0, sizeof(LZWData));
 
+    cl::Buffer lzw_input_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * NUM_PACKETS * blocksize, NULL, &err);
+    r_data->host_input = (unsigned char *)dev.queue.enqueueMapBuffer(lzw_input_buffer,
+                                                CL_TRUE, CL_MAP_WRITE, 0, sizeof(unsigned char) * NUM_PACKETS * blocksize);
+
+    cl::Buffer lzw_output_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
+    r_data->output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(lzw_output_buffer,
+                                                CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
+
     // Loop until last message
     while (!done) {
 
@@ -319,7 +332,7 @@ int main(int argc, char *argv[]) {
 
         if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) || done == 1) {
             compression_timer.start();
-            compression_pipeline(r_data, dev, device_lzw_data, host_lzw_data);
+            compression_pipeline(r_data, dev, device_lzw_data, host_lzw_data, lzw_input_buffer, lzw_output_buffer);
             compression_timer.stop();
             writer = 0;
             r_data->length_sum = 0;
