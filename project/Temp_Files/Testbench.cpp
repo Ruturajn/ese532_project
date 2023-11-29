@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
-#define FILE_SIZE 4096
+#define FILE_SIZE 14247
 
 using namespace std;
 
@@ -45,10 +45,10 @@ std::vector<int> encoding(std::string s1) {
 
 //****************************************************************************************************************
 int main() {
-    // FILE *fptr = fopen("../../../../Text_Files/LittlePrince.txt", "r");
+    FILE *fptr = fopen("../../../../Text_Files/LittlePrince.txt", "r");
     // FILE *fptr = fopen("./ruturajn.tgz", "r");
     // FILE *fptr = fopen("../Text_Files/LittlePrince.txt", "r");
-    FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_c1.JPG", "rb");
+    // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_c1.JPG", "rb");
     if (fptr == NULL) {
         printf("Unable to open file!\n");
         exit(EXIT_FAILURE);
@@ -63,7 +63,7 @@ int main() {
         printf("Unable to allocate memory for file data!\n");
         exit(EXIT_FAILURE);
     }
-    fseek(fptr, file_sz, 0);
+    // fseek(fptr, file_sz, 0);
 
     size_t bytes_read = fread(file_data, 1, file_sz, fptr);
 
@@ -72,57 +72,56 @@ int main() {
 
     file_data[file_sz] = '\0';
     fclose(fptr);
-    std::string s;
-    char *temp = (char *)file_data;
-    int count = 0;
 
-    while (count++ < file_sz) {
-        s += *temp;
-        temp += 1;
-    }
-
-    uint32_t lzw_codes[8192];
+    uint32_t lzw_codes[16384];
     // uint32_t packet_len = 0;
     // unsigned int fill = 0;
-    // uint8_t failure = 0;
-    LZWData *data = (LZWData *)calloc(1, sizeof(LZWData));
-    if (data == NULL) {
-    	cout << "Failed to allocate memory for LZW Data" << endl;
-    	exit(EXIT_FAILURE);
-    }
-    data->start_idx = 0;
-    data->end_idx = file_sz;
+    uint8_t failure = 0;
 
-    lzw(file_data, lzw_codes, data);
+    uint32_t chunk_indices[6] = {5, 0, 4096, 8192, 12288, 14247};
+    uint32_t out_packet_lengths[5] = {0};
 
-    std::vector<int> output_code = encoding(s);
-    cout << data->out_packet_length << "|" << output_code.size() << endl;
+    lzw(file_data, lzw_codes, chunk_indices, out_packet_lengths);
 
-    if (data->failure) {
+    uint32_t *lzw_codes_ptr = &lzw_codes[0];
+
+    if (out_packet_lengths[0]) {
         cout << "TEST FAILED!!" << endl;
         cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
         exit(EXIT_FAILURE);
     }
 
-    if (data->out_packet_length != output_code.size()) {
-        cout << "TEST FAILED!!" << endl;
-        cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
-        cout << data->out_packet_length << "|" << output_code.size() << endl;
-        exit(EXIT_FAILURE);
-    }
+    for (int i = 1; i <= 4; i++) {
+        std::string s;
+        char *temp = (char *)file_data + chunk_indices[i];
+        int count = chunk_indices[i];
 
-    for (int i = 0; i < output_code.size(); i++) {
-        if (output_code[i] != lzw_codes[i]) {
-            cout << "FAILURE!!" << endl;
-            cout << output_code[i] << "|" << lzw_codes[i] << " at i = " << i
-                 << endl;
+        while (count++ < chunk_indices[i+1]) {
+            s += *temp;
+            temp += 1;
         }
+
+        std::vector<int> output_code = encoding(s);
+
+        if (out_packet_lengths[i] != output_code.size()) {
+            cout << "TEST FAILED!!" << endl;
+            cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
+            cout << out_packet_lengths[i] << "|" << output_code.size() << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        for (int j = 0; j < output_code.size(); j++) {
+            if (output_code[j] != lzw_codes_ptr[j]) {
+                cout << "FAILURE!!" << endl;
+                cout << output_code[i] << "|" << lzw_codes_ptr[j] << " at j = " << j
+                     << endl;
+            }
+        }
+
+        lzw_codes_ptr += out_packet_lengths[i];
     }
 
     cout << "TEST PASSED!!" << endl;
-    cout << "Associate Memory count : " << data->assoc_mem_count << endl;
-
     free(file_data);
-    free(data);
     return 0;
 }

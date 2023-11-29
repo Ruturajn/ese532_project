@@ -44,6 +44,8 @@ typedef struct __attribute__((packed)) RawData {
     FILE *fptr_write; /// File pointer to write the output.
     unsigned char *host_input;
     uint32_t *output_codes;
+    uint32_t *chunk_indices;
+    uint32_t *output_code_lengths;
 } RawData;
 
 typedef struct CLDevice {
@@ -129,14 +131,19 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer device_data, LZWData *h_data,
-                                 cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer) {
+static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer device_data,
+                                 LZWData *h_data, cl::Buffer lzw_input_buffer,
+                                 cl::Buffer lzw_output_buffer,
+                                 cl::Buffer chunk_indices_buffer,
+                                 cl::Buffer out_packet_lengths_buffer) {
 
     vector<uint32_t> vect;
     string sha_fingerprint;
     int64_t chunk_idx = 0;
     uint32_t packet_len = 0;
     uint32_t header = 0;
+    vector<int64_t> dedup_out;
+    vector<pair<pair<int, int>, unsigned char *>> final_data;
 
     // ------------------------------------------------------------------------------------
     // Step 3: Run the kernel
@@ -156,8 +163,11 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer devic
 
     memcpy(r_data->host_input, r_data->pipeline_buffer, sizeof(unsigned char) * r_data->length_sum);
 
-    for (int i = 0; i < (int)(vect.size() - 1); i++) {
+    r_data->chunk_indices[0] = vect.size();
 
+    std::copy(vect.begin(), vect.end(), r_data->chunk_indices + 1);
+
+    for (int i = 0; i < (int)(vect.size() - 1); i++) {
         // RUN SHA
         time_sha.start();
         sha_fingerprint = sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
@@ -168,69 +178,74 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer devic
         chunk_idx = dedup(sha_fingerprint);
         time_dedup.stop();
 
-        // CDC Output    - [ 0, 23, 500, 2000, 4000, 8000, 9000, 12000, 15000, 16000]
-        // Chunk Indices - [    -1,  23,   -1,   -1,   -1,   44,    -1,    99,    -1]
+        dedup_out.push_back(chunk_idx);
+    }
 
-        // Create a vector that holds all the data. This will store header with
-        // data in the case of a unique chunk and store only the header in case
-        // of a duplicate chunk.
+    // RUN LZW
+    time_lzw.start();
 
-        if (chunk_idx == -1) {
-            time_lzw.start();
+    dev.kernel.setArg(0, lzw_input_buffer);
+    dev.kernel.setArg(1, lzw_output_buffer);
+    dev.kernel.setArg(2, chunk_indices_buffer);
+    dev.kernel.setArg(3, out_packet_lengths_buffer);
 
-            h_data->start_idx = vect[i];
-            h_data->end_idx = vect[i+1];
+    dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer}, 0 /* 0 means from host*/, NULL, &write_event[0]);
 
-            dev.kernel.setArg(0, lzw_input_buffer);
-            dev.kernel.setArg(1, lzw_output_buffer);
-            dev.kernel.setArg(2, device_data);
+    dev.queue.enqueueTask(dev.kernel, &write_event, &compute_event[0]);
 
-            dev.queue.enqueueMigrateMemObjects({lzw_input_buffer}, 0 /* 0 means from host*/, NULL, &write_event[0]);
+    // Profiling the kernel.
+    // compute_event[0].wait();
+    // total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() -
+    // compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
-            // lzw(input, vect[i], vect[i+1], out_packet, &out_packet_length,
-            // &failure, &assoc_mem);
+    dev.queue.enqueueMigrateMemObjects({lzw_output_buffer, out_packet_lengths_buffer}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
+    clWaitForEvents(1, (const cl_event *)&done_event[0]);
+    time_lzw.stop();
 
-            dev.queue.enqueueTask(dev.kernel, &write_event, &compute_event[0]);
+    if (h_data->output_code_lengths[0]) {
+        printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
+        exit(EXIT_FAILURE);
+    }
 
-            // Profiling the kernel.
-            // compute_event[0].wait();
-            // total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() -
-            // compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    uint32_t *output_codes_ptr = r_data->output_codes;
 
-            dev.queue.enqueueMigrateMemObjects({lzw_output_buffer, device_data}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
-            clWaitForEvents(1, (const cl_event *)&done_event[0]);
-            time_lzw.stop();
+    for (int i = 0; i < dedup_out.size(); i++) {
+        if (dedup_out[i] == -1) {
+            packet_len = ((h_data->output_code_lengths[i+1] * 12) / 8);
+            packet_len = (h_data->output_code_lengths[i+1] % 2 != 0) ? packet_len + 1 : packet_len;
 
-            cout << "Associative Mem count is : " << h_data->assoc_mem_count << endl;
-
-            if (h_data->failure) {
-                printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
-                exit(EXIT_FAILURE);
-            }
-
-            packet_len = ((h_data->out_packet_length * 12) / 8);
-            packet_len = (chunk_idx == -1 && (h_data->out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
-
-            unsigned char *data_packet = create_packet(chunk_idx, h_data->out_packet_length, r_data->output_codes, packet_len);
+            unsigned char *data_packet = create_packet(chunk_idx, output_code_lengths[i+1], output_codes_ptr, packet_len);
 
             header = packet_len << 1;
-            fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
+            // fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
+            final_data.push_back({{header, packet_len}, data_packet});
             lzw_bytes += 4;
 
-            fwrite(data_packet, sizeof(unsigned char), packet_len, r_data->fptr_write);
+            // fwrite(data_packet, sizeof(unsigned char), packet_len, r_data->fptr_write);
             lzw_bytes += packet_len;
 
-            free(data_packet);
+            // free(data_packet);
         } else {
             header = (chunk_idx << 1) | 1;
-            fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
+            // fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
+            final_data.push_back({{header, -1}, NULL});
             dedup_bytes += 4;
+        }
+
+        output_codes_ptr += h_data->output_code_lengths[i+1];
+    }
+    total_time.stop();
+
+    for (auto it: final_data) {
+        if (it.second == NULL) {
+            fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
+            fwrite(&it.second, sizeof(unsigned char), it.first.second, r_data->fptr_write);
+            free(it.second);
+        } else {
+            fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
         }
     }
 
-    // For loop that iterates over the chunks and performs LZW.
-
-    total_time.stop();
     cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2 << " ms." << endl;
 }
 
@@ -294,15 +309,20 @@ int main(int argc, char *argv[]) {
     // Step 2: Create buffers and initialize test values
     // ------------------------------------------------------------------------------------
 
-    cl::Buffer device_lzw_data = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(LZWData), NULL, &err);
-    LZWData *host_lzw_data = (LZWData *)dev.queue.enqueueMapBuffer(device_lzw_data, CL_TRUE, CL_MAP_WRITE, 0, sizeof(LZWData));
-
     cl::Buffer lzw_input_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * NUM_PACKETS * blocksize, NULL, &err);
     r_data->host_input = (unsigned char *)dev.queue.enqueueMapBuffer(lzw_input_buffer,
                                                 CL_TRUE, CL_MAP_WRITE, 0, sizeof(unsigned char) * NUM_PACKETS * blocksize);
 
     cl::Buffer lzw_output_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
     r_data->output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(lzw_output_buffer,
+                                                CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
+
+    cl::Buffer chunk_indices_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
+    r_data->chunk_indices = (uint32_t *)dev.queue.enqueueMapBuffer(chunk_indices_buffer,
+                                                CL_TRUE, CL_MAP_WRITE, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
+
+    cl::Buffer out_packet_lengths_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
+    r_data->output_code_lengths = (uint32_t *)dev.queue.enqueueMapBuffer(out_packet_lengths_buffer,
                                                 CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
 
     // Loop until last message
@@ -332,7 +352,9 @@ int main(int argc, char *argv[]) {
 
         if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) || done == 1) {
             compression_timer.start();
-            compression_pipeline(r_data, dev, device_lzw_data, host_lzw_data, lzw_input_buffer, lzw_output_buffer);
+            compression_pipeline(r_data, dev, device_lzw_data, host_lzw_data,
+                                 lzw_input_buffer, lzw_output_buffer,
+                                 chunk_indices_buffer, out_packet_lengths_buffer);
             compression_timer.stop();
             writer = 0;
             r_data->length_sum = 0;
@@ -369,13 +391,17 @@ int main(int argc, char *argv[]) {
     std::cout << "--------------- Key Throughputs ---------------" << std::endl;
     float ethernet_latency = ethernet_timer.latency() / 1000.0;
     float compression_latency = compression_timer.latency() / 1000.0;
+    float compression_latency_total_time = total_time.latency() / 1000.0;
     float compression_throughput = (offset * 8 / 1000000.0) / compression_latency; // Mb/s
+    float compression_throughput_2 = (offset * 8 / 1000000.0) / compression_latency_total_time; // Mb/s
     float ethernet_throughput = (offset * 8 / 1000000.0) / ethernet_latency; // Mb/s
     cout << "Ethernet Latency: " << ethernet_latency << "s." << endl;
     cout << "Bytes Received: " << offset << "B." << endl;
     cout << "Latency for Compression: " << compression_latency << "s." << endl;
+    cout << "Latency for Compression (without fwrite): " << compression_latency_total_time << "s." << endl;
     cout << "Ethernet Throughput: " << ethernet_throughput << "Mb/s." << endl;
     cout << "Application Throughput: " << compression_throughput << "Mb/s." << endl;
+    cout << "Application Throughput (without fwrite): " << compression_throughput_2 << "Mb/s." << endl;
     cout << "Bytes Contributed by Deduplication: " << dedup_bytes << "B." << endl;
     cout << "Bytes Contributed by LZW: " << lzw_bytes << "B." << endl;
 

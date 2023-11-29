@@ -2,13 +2,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <hls_stream.h>
-#include "common.h"
 
 #define CAPACITY                                                                                                       \
     16384  // hash output is 15 bits, and we have 1 entry per bucket, so capacity
          // is 2^15
 #define SEED 524057
 #define ASSOCIATIVE_MEM_STORE 64
+#define CHUNK_SIZE 4096
+#define MAX_CHUNK_SIZE 8192
 
 //****************************************************************************************************************
 typedef struct {
@@ -53,12 +54,12 @@ unsigned int inline my_hash(unsigned long key) {
     return h & 0x3FFF;
 }
 
-void inline hash_lookup(unsigned long *hash_table_1, unsigned long *hash_table_2, unsigned int key, bool *hit, unsigned int *result) {
+void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key, bool *hit, unsigned int *result) {
     key &= 0xFFFFF; // make sure key is only 20 bits
 
     unsigned int hash_val = my_hash(key);
 
-    unsigned long lookup = hash_table_1[hash_val];
+    unsigned long lookup = hash_table[hash_val][0];
 
     // [valid][value][key]
     unsigned int stored_key = lookup & 0xFFFFF;       // stored key is 20 bits
@@ -71,7 +72,7 @@ void inline hash_lookup(unsigned long *hash_table_1, unsigned long *hash_table_2
         return;
     }
 
-    lookup = hash_table_2[hash_val];
+    lookup = hash_table[hash_val][1];
 
     // [valid][value][key]
     stored_key = lookup & 0xFFFFF;       // stored key is 20 bits
@@ -86,28 +87,28 @@ void inline hash_lookup(unsigned long *hash_table_1, unsigned long *hash_table_2
     *result = 0;
 }
 
-void inline hash_insert(unsigned long *hash_table_1, unsigned long *hash_table_2, unsigned int key, unsigned int value, bool *collision) {
+void inline hash_insert(unsigned long (*hash_table)[2], unsigned int key, unsigned int value, bool *collision) {
     key &= 0xFFFFF; // make sure key is only 20 bits
     value &= 0xFFF; // value is only 12 bits
 
     unsigned int hash_val = my_hash(key);
 
-    unsigned long lookup = hash_table_1[hash_val];
+    unsigned long lookup = hash_table[hash_val][0];
     unsigned int valid = (lookup >> (20 + 12)) & 0x1;
 
     if (!valid) {
-        hash_table_1[hash_val] = (1UL << (20 + 12)) | (value << 20) | key;
+        hash_table[hash_val][0] = (1UL << (20 + 12)) | (value << 20) | key;
         *collision = 0;
         return;
     }
 
-	lookup = hash_table_2[hash_val];
+	lookup = hash_table[hash_val][1];
 	valid = (lookup >> (20 + 12)) & 0x1;
 	if (valid) {
 		*collision = 1;
 		return;
 	}
-	hash_table_2[hash_val] = (1UL << (20 + 12)) | (value << 20) | key;
+	hash_table[hash_val][1] = (1UL << (20 + 12)) | (value << 20) | key;
 	*collision = 0;
 }
 
@@ -181,41 +182,38 @@ void inline assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit, unsigned i
     *hit = 0;
 }
 
-void inline insert(unsigned long *hash_table_1, unsigned long *hash_table_2, assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
-    hash_insert(hash_table_1, hash_table_2, key, value, collision);
+void inline insert(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
+    hash_insert(hash_table, key, value, collision);
     if (*collision) {
         assoc_insert(mem, key, value, collision);
     }
 }
 
-void inline lookup(unsigned long *hash_table_1, unsigned long *hash_table_2, assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
-    hash_lookup(hash_table_1, hash_table_2, key, hit, result);
+void inline lookup(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
+    hash_lookup(hash_table, key, hit, result);
     if (!*hit) {
         assoc_lookup(mem, key, hit, result);
     }
 }
 
-void lzw(unsigned char *input, uint32_t *lzw_codes, LZWData *data) {
-
-#pragma HLS INTERFACE m_axi port=input depth=4096 bundle=p0
-#pragma HLS INTERFACE m_axi port=lzw_codes depth=8192 bundle=p1
-#pragma HLS INTERFACE m_axi port=data depth=17 bundle=p1
+static void compute_lzw(unsigned char *input, uint32_t *lzw_codes, uint32_t generic_info[4]) {
 
     // create hash table and assoc mem
-    unsigned long hash_table_1[CAPACITY];
-    unsigned long hash_table_2[CAPACITY];
-    // unsigned long hash_table_2[CAPACITY];
+    unsigned long hash_table[CAPACITY][2];
     assoc_mem my_assoc_mem;
 
-    data->failure = 0;
+#pragma HLS array_partition variable=hash_table complete dim=2
+//#pragma HLS array_partition variable=lzw_codes block factor=512
+//#pragma HLS array_partition variable=input block factor=512
 
 // make sure the memories are clear
 LOOP1:
     for (int i = 0; i < CAPACITY; i++) {
-        hash_table_1[i] = 0;
-        hash_table_2[i] = 0;
+        hash_table[i][0] = 0;
+        hash_table[i][1] = 0;
     }
     my_assoc_mem.fill = 0;
+
 LOOP2:
     for (int i = 0; i < 512; i++) {
         my_assoc_mem.upper_key_mem[i] = 0;
@@ -224,31 +222,26 @@ LOOP2:
     }
 
     int next_code = 256;
-
-    unsigned int prefix_code = (unsigned int)input[data->start_idx];
-    unsigned int concat_val = 0;
+    uint8_t failure = 0;
+    uint32_t start_idx = generic_info[0];
+    uint32_t end_idx = generic_info[1];
+    unsigned int prefix_code = (unsigned int)input[start_idx];
     unsigned int code = 0;
     unsigned char next_char = 0;
     uint32_t j = 0;
 
 LOOP4:
-    for (int i = 0; i < (data->end_idx - data->start_idx) - 1; i++) {
-        next_char = input[data->start_idx + i + 1];
+    for (int i = start_idx; i < end_idx - 1; i++) {
+        next_char = input[i + 1];
         bool hit = 0;
-        // concat_val = (prefix_code << 8) + next_char;
-        //***************************************************************
-        lookup(hash_table_1, hash_table_2, &my_assoc_mem, (prefix_code << 8) + next_char, &hit, &code);
-        //***************************************************************
+        lookup(hash_table, &my_assoc_mem, (prefix_code << 8) + next_char, &hit, &code);
         if (!hit) {
             lzw_codes[j] = prefix_code;
 
             bool collision = 0;
-            //***************************************************************
-            insert(hash_table_1, hash_table_2, &my_assoc_mem, (prefix_code << 8) + next_char, next_code, &collision);
-            //***************************************************************
+            insert(hash_table, &my_assoc_mem, (prefix_code << 8) + next_char, next_code, &collision);
             if (collision) {
-                data->failure = 1;
-                //continue;
+                failure = 1;
             }
             next_code += 1;
             ++j;
@@ -257,7 +250,42 @@ LOOP4:
             prefix_code = code;
         }
     }
+
     lzw_codes[j] = prefix_code;
-    data->out_packet_length = j + 1;
-    data->assoc_mem_count = my_assoc_mem.fill;
+    generic_info[2] = j + 1;
+    generic_info[3] = failure;
+}
+
+void lzw(unsigned char *input, uint32_t *lzw_codes,
+         uint32_t *chunk_indices, uint32_t *out_packet_lengths) {
+
+#pragma HLS INTERFACE m_axi port=input depth=14247 bundle=p0
+#pragma HLS INTERFACE m_axi port=lzw_codes depth=16384 bundle=p0
+#pragma HLS INTERFACE m_axi port=chunk_indices depth=6 bundle=p1
+#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=5 bundle=p1
+
+    // The first element in the chunk_indices array contains the size
+    // of the chunk_indices array.
+    uint32_t chunk_indices_len = chunk_indices[0];
+
+    // This is an array that packs generic information for the LZW
+    // function. The elements in the this array are as follows:
+    // 0 - start_idx
+    // 1 - end_idx
+    // 2 - out_packet_length
+    // 3 - failure
+    uint32_t generic_info[4] = {0};
+    uint32_t *lzw_codes_ptr = &lzw_codes[0];
+
+    LOOP5: for (int i = 1; i <= chunk_indices_len - 1; i++) {
+        generic_info[0] = chunk_indices[i];
+        generic_info[1] = chunk_indices[i + 1];
+        compute_lzw(input, lzw_codes_ptr, generic_info);
+        out_packet_lengths[i] = generic_info[2];
+        lzw_codes_ptr += generic_info[2];
+    }
+
+    // The first element of the out_packet_lengths is going to signify
+    // failure to insert into the associative memory.
+    out_packet_lengths[0] = generic_info[3];
 }
