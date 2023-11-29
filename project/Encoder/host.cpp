@@ -78,7 +78,7 @@ void handle_input(int argc, char *argv[], int *blocksize, char **filename,
 }
 
 static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_length, uint32_t *out_packet,
-                                    uint32_t packet_len, cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer) {
+                                    uint32_t packet_len) {
     unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
 
@@ -211,7 +211,7 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer devic
             packet_len = ((h_data->out_packet_length * 12) / 8);
             packet_len = (chunk_idx == -1 && (h_data->out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
 
-            unsigned char *data_packet = create_packet(chunk_idx, h_data->out_packet_length, h_data->host_output, packet_len);
+            unsigned char *data_packet = create_packet(chunk_idx, h_data->out_packet_length, r_data->output_codes, packet_len);
 
             header = packet_len << 1;
             fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
@@ -287,7 +287,7 @@ int main(int argc, char *argv[]) {
     cl::Program::Binaries bins{{fileBuf, fileBufSize}};
     cl::Program program(context, devices, bins, NULL, &err);
     CLDevice dev;
-    dev.queue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err);
+    dev.queue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &err);
     dev.kernel = cl::Kernel(program, "lzw", &err);
 
     // ------------------------------------------------------------------------------------

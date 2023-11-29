@@ -85,24 +85,29 @@ int main() {
     // uint32_t packet_len = 0;
     // unsigned int fill = 0;
     // uint8_t failure = 0;
-    LZWData data;
-    data.start_idx = 0;
-    data.end_idx = file_sz;
-    lzw(file_data, lzw_codes, &data);
+    LZWData *data = (LZWData *)calloc(1, sizeof(LZWData));
+    if (data == NULL) {
+    	cout << "Failed to allocate memory for LZW Data" << endl;
+    	exit(EXIT_FAILURE);
+    }
+    data->start_idx = 0;
+    data->end_idx = file_sz;
+
+    lzw(file_data, lzw_codes, data);
 
     std::vector<int> output_code = encoding(s);
-    cout << data.out_packet_length << "|" << output_code.size() << endl;
+    cout << data->out_packet_length << "|" << output_code.size() << endl;
 
-    if (data.failure) {
+    if (data->failure) {
         cout << "TEST FAILED!!" << endl;
         cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
         exit(EXIT_FAILURE);
     }
 
-    if (data.out_packet_length != output_code.size()) {
+    if (data->out_packet_length != output_code.size()) {
         cout << "TEST FAILED!!" << endl;
         cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
-        cout << data.out_packet_length << "|" << output_code.size() << endl;
+        cout << data->out_packet_length << "|" << output_code.size() << endl;
         exit(EXIT_FAILURE);
     }
 
@@ -115,8 +120,9 @@ int main() {
     }
 
     cout << "TEST PASSED!!" << endl;
-    cout << "Associate Memory count : " << data.assoc_mem_count << endl;
+    cout << "Associate Memory count : " << data->assoc_mem_count << endl;
 
     free(file_data);
+    free(data);
     return 0;
 }

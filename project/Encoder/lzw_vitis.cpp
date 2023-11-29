@@ -199,6 +199,7 @@ void lzw(unsigned char *input, uint32_t *lzw_codes, LZWData *data) {
 
 #pragma HLS INTERFACE m_axi port=input depth=4096 bundle=p0
 #pragma HLS INTERFACE m_axi port=lzw_codes depth=8192 bundle=p1
+#pragma HLS INTERFACE m_axi port=data depth=17 bundle=p1
 
     // create hash table and assoc mem
     unsigned long hash_table_1[CAPACITY];
