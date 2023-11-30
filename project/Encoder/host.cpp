@@ -131,8 +131,7 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer device_data,
-                                 LZWData *h_data, cl::Buffer lzw_input_buffer,
+static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer lzw_input_buffer,
                                  cl::Buffer lzw_output_buffer,
                                  cl::Buffer chunk_indices_buffer,
                                  cl::Buffer out_packet_lengths_buffer) {
@@ -202,19 +201,19 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer devic
     clWaitForEvents(1, (const cl_event *)&done_event[0]);
     time_lzw.stop();
 
-    if (h_data->output_code_lengths[0]) {
+    if (r_data->output_code_lengths[0]) {
         printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
         exit(EXIT_FAILURE);
     }
 
     uint32_t *output_codes_ptr = r_data->output_codes;
 
-    for (int i = 0; i < dedup_out.size(); i++) {
+    for (int i = 0; i < (int)dedup_out.size(); i++) {
         if (dedup_out[i] == -1) {
-            packet_len = ((h_data->output_code_lengths[i+1] * 12) / 8);
-            packet_len = (h_data->output_code_lengths[i+1] % 2 != 0) ? packet_len + 1 : packet_len;
+            packet_len = ((r_data->output_code_lengths[i+1] * 12) / 8);
+            packet_len = (r_data->output_code_lengths[i+1] % 2 != 0) ? packet_len + 1 : packet_len;
 
-            unsigned char *data_packet = create_packet(chunk_idx, output_code_lengths[i+1], output_codes_ptr, packet_len);
+            unsigned char *data_packet = create_packet(chunk_idx, r_data->output_code_lengths[i+1], output_codes_ptr, packet_len);
 
             header = packet_len << 1;
             // fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
@@ -232,7 +231,7 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer devic
             dedup_bytes += 4;
         }
 
-        output_codes_ptr += h_data->output_code_lengths[i+1];
+        output_codes_ptr += r_data->output_code_lengths[i+1];
     }
     total_time.stop();
 
@@ -352,8 +351,7 @@ int main(int argc, char *argv[]) {
 
         if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) || done == 1) {
             compression_timer.start();
-            compression_pipeline(r_data, dev, device_lzw_data, host_lzw_data,
-                                 lzw_input_buffer, lzw_output_buffer,
+            compression_pipeline(r_data, dev, lzw_input_buffer, lzw_output_buffer,
                                  chunk_indices_buffer, out_packet_lengths_buffer);
             compression_timer.stop();
             writer = 0;
@@ -362,15 +360,18 @@ int main(int argc, char *argv[]) {
             writer += 1;
     }
 
-    free(r_data->pipeline_buffer);
-    free(r_data);
-
     for (int i = 0; i < (NUM_PACKETS); i++)
         free(input[i]);
 
     fclose(r_data->fptr_write);
-    dev.queue.enqueueUnmapMemObject(device_lzw_data, host_lzw_data);
+    dev.queue.enqueueUnmapMemObject(lzw_input_buffer, r_data->host_input);
+    dev.queue.enqueueUnmapMemObject(lzw_output_buffer, r_data->output_codes);
+    dev.queue.enqueueUnmapMemObject(chunk_indices_buffer, r_data->chunk_indices);
+    dev.queue.enqueueUnmapMemObject(out_packet_lengths_buffer, r_data->output_code_lengths);
     dev.queue.finish();
+
+    free(r_data->pipeline_buffer);
+    free(r_data);
 
     // Print Latencies
     cout << "--------------- Total Latencies ---------------" << endl;
