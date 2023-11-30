@@ -48,7 +48,8 @@ int64_t dedup(string sha_fingerprint);
 
 // void lzw(LZWData *data);
 // void lzw(unsigned char *input, uint32_t *lzw_codes, LZWData *data);
-void lzw(unsigned char *input, uint32_t *lzw_codes,
-         uint32_t *chunk_indices, uint32_t *out_packet_lengths);
-
+/* void lzw(unsigned char *input, uint32_t *lzw_codes, */
+/*          uint32_t *chunk_indices, uint32_t *out_packet_lengths); */
+void lzw(unsigned char input[16384], uint32_t lzw_codes[40960],
+         uint32_t chunk_indices[4096], uint32_t out_packet_lengths[8192], int num_chunks);
 #endif

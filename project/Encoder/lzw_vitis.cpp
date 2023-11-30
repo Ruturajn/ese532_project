@@ -196,7 +196,7 @@ void inline lookup(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int 
     }
 }
 
-static void compute_lzw(unsigned char *input, uint32_t *lzw_codes, uint32_t generic_info[4]) {
+static void compute_lzw(unsigned char input[16384], uint32_t lzw_codes[8192], uint32_t generic_info[4], int offset) {
 
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY][2];
@@ -228,7 +228,7 @@ LOOP2:
     unsigned int prefix_code = (unsigned int)input[start_idx];
     unsigned int code = 0;
     unsigned char next_char = 0;
-    uint32_t j = 0;
+    uint32_t j = offset * 8192;
 
 LOOP4:
     for (int i = start_idx; i < end_idx - 1; i++) {
@@ -251,22 +251,29 @@ LOOP4:
         }
     }
 
+    // 234 codes hai
+    // 8192 + 234
+
     lzw_codes[j] = prefix_code;
-    generic_info[2] = j + 1;
+    generic_info[2] = (j - (offset * 8192)) + 1;
     generic_info[3] = failure;
 }
 
-void lzw(unsigned char *input, uint32_t *lzw_codes,
-         uint32_t *chunk_indices, uint32_t *out_packet_lengths) {
+void lzw(unsigned char input[16384], uint32_t lzw_codes[40960],
+         uint32_t chunk_indices[4096], uint32_t out_packet_lengths[8192], int num_chunks) {
 
-#pragma HLS INTERFACE m_axi port=input depth=14247 bundle=p0
-#pragma HLS INTERFACE m_axi port=lzw_codes depth=16384 bundle=p0
-#pragma HLS INTERFACE m_axi port=chunk_indices depth=6 bundle=p1
-#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=5 bundle=p1
+#pragma HLS INTERFACE m_axi port=input depth=16384 bundle=p0
+#pragma HLS INTERFACE m_axi port=lzw_codes depth=40960 bundle=p1
+#pragma HLS INTERFACE m_axi port=chunk_indices depth=4096 bundle=p0
+#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=8192 bundle=p1
+
+#pragma HLS array_partition variable=lzw_codes block factor=5 dim=1
+//#pragma HLS array_partition variable=input block factor=2 dim=1
+#pragma HLS array_partition variable=chunk_indices block factor=2 dim=1
 
     // The first element in the chunk_indices array contains the size
     // of the chunk_indices array.
-    uint32_t chunk_indices_len = chunk_indices[0];
+    // uint32_t chunk_indices_len = chunk_indices[0];
 
     // This is an array that packs generic information for the LZW
     // function. The elements in the this array are as follows:
@@ -274,15 +281,19 @@ void lzw(unsigned char *input, uint32_t *lzw_codes,
     // 1 - end_idx
     // 2 - out_packet_length
     // 3 - failure
-    uint32_t generic_info[4] = {0};
-    uint32_t *lzw_codes_ptr = &lzw_codes[0];
+    uint32_t generic_info[4];
+    generic_info[3] = 0;
+    generic_info[2] = 0;
+    uint32_t temp_lzw_codes[8192];
 
-    LOOP5: for (int i = 1; i <= chunk_indices_len - 1; i++) {
-        generic_info[0] = chunk_indices[i];
-        generic_info[1] = chunk_indices[i + 1];
-        compute_lzw(input, lzw_codes_ptr, generic_info);
-        out_packet_lengths[i] = generic_info[2];
-        lzw_codes_ptr += generic_info[2];
+    LOOP5: for (int i = 1; i <= 4; i++) {
+#pragma HLS UNROLL
+    	if (i <= num_chunks -1 ) {
+			generic_info[0] = chunk_indices[i];
+			generic_info[1] = chunk_indices[i+1];
+			compute_lzw(input, lzw_codes, generic_info, i-1);
+			out_packet_lengths[i] = generic_info[2];
+    	}
     }
 
     // The first element of the out_packet_lengths is going to signify

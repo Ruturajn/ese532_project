@@ -56,13 +56,13 @@ int main() {
 
     size_t file_sz = FILE_SIZE;
 
-    unsigned char *file_data = NULL;
+    unsigned char file_data[16384];
 
-    file_data = (unsigned char *)calloc((file_sz + 1), sizeof(unsigned char));
-    if (file_data == NULL) {
-        printf("Unable to allocate memory for file data!\n");
-        exit(EXIT_FAILURE);
-    }
+//    file_data = (unsigned char *)calloc((16384), sizeof(unsigned char));
+//    if (file_data == NULL) {
+//        printf("Unable to allocate memory for file data!\n");
+//        exit(EXIT_FAILURE);
+//    }
     // fseek(fptr, file_sz, 0);
 
     size_t bytes_read = fread(file_data, 1, file_sz, fptr);
@@ -73,17 +73,30 @@ int main() {
     file_data[file_sz] = '\0';
     fclose(fptr);
 
-    uint32_t lzw_codes[16384];
+    uint32_t lzw_codes[40960];
+//    if (lzw_codes == NULL) {
+//    	cout << "Unable to allocate memory for lzw_codes" << endl;
+//    	exit(EXIT_FAILURE);
+//    }
     // uint32_t packet_len = 0;
     // unsigned int fill = 0;
     uint8_t failure = 0;
 
-    uint32_t chunk_indices[6] = {5, 0, 4096, 8192, 12288, 14247};
-    uint32_t out_packet_lengths[5] = {0};
+    uint32_t chunk_indices[4096];
+    chunk_indices[0] = 5;
+    chunk_indices[1] = 0;
+    chunk_indices[2] = 4096;
+    chunk_indices[3] = 8192;
+    chunk_indices[4] = 12288;
+    chunk_indices[5] = 14247;
+    uint32_t out_packet_lengths[8192];
+//    if (out_packet_lengths == NULL) {
+//    	cout << "Unable to allocate memory for output code lengths" << endl;
+//    	exit(EXIT_FAILURE);
+//    }
+    lzw(file_data, lzw_codes, chunk_indices, out_packet_lengths, 5);
 
-    lzw(file_data, lzw_codes, chunk_indices, out_packet_lengths);
-
-    uint32_t *lzw_codes_ptr = &lzw_codes[0];
+    uint32_t *lzw_codes_ptr = lzw_codes;
 
     if (out_packet_lengths[0]) {
         cout << "TEST FAILED!!" << endl;
@@ -118,10 +131,9 @@ int main() {
             }
         }
 
-        lzw_codes_ptr += out_packet_lengths[i];
+        lzw_codes_ptr += 8192;
     }
 
     cout << "TEST PASSED!!" << endl;
-    free(file_data);
     return 0;
 }
