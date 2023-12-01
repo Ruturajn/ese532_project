@@ -15,6 +15,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <vector>
+#include <unordered_map>
 
 #define NUM_PACKETS 2
 #define pipe_depth 4
@@ -131,7 +132,43 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer lzw_input_buffer,
+// "Golden" functions to check correctness
+std::vector<int> encoding(std::string s1) {
+    // std::cout << "Encoding\n";
+    std::unordered_map<std::string, int> table;
+    for (int i = 0; i <= 255; i++) {
+        std::string ch = "";
+        ch += char(i);
+        table[ch] = i;
+    }
+
+    std::string p = "", c = "";
+    p += s1[0];
+    int code = 256;
+    std::vector<int> output_code;
+    // std::cout << "String\tOutput_Code\tAddition\n";
+    for (int i = 0; i < s1.length(); i++) {
+        if (i != s1.length() - 1)
+            c += s1[i + 1];
+        if (table.find(p + c) != table.end()) {
+            p = p + c;
+        } else {
+            // std::cout << p << "\t" << table[p] << "\t\t"
+            //      << p + c << "\t" << code << std::endl;
+            output_code.push_back(table[p]);
+            table[p + c] = code;
+            code++;
+            p = c;
+        }
+        c = "";
+    }
+    // std::cout << p << "\t" << table[p] << std::endl;
+    output_code.push_back(table[p]);
+    return output_code;
+}
+
+static void compression_pipeline(RawData *r_data, unsigned char *host_input, uint32_t *output_codes, uint32_t *chunk_indices,
+                                 uint32_t *output_code_lengths, CLDevice dev, cl::Buffer lzw_input_buffer,
                                  cl::Buffer lzw_output_buffer,
                                  cl::Buffer chunk_indices_buffer,
                                  cl::Buffer out_packet_lengths_buffer) {
@@ -155,16 +192,17 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer lzw_i
     double total_time_2 = 0;
 
     total_time.start();
+
     // RUN CDC
     time_cdc.start();
     cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
     time_cdc.stop();
 
-    memcpy(r_data->host_input, r_data->pipeline_buffer, sizeof(unsigned char) * r_data->length_sum);
+    memcpy(host_input, r_data->pipeline_buffer, sizeof(unsigned char) * r_data->length_sum);
 
-    r_data->chunk_indices[0] = vect.size();
+    chunk_indices[0] = vect.size();
 
-    std::copy(vect.begin(), vect.end(), r_data->chunk_indices + 1);
+    std::copy(vect.begin(), vect.end(), chunk_indices + 1);
 
     for (int i = 0; i < (int)(vect.size() - 1); i++) {
         // RUN SHA
@@ -175,10 +213,11 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer lzw_i
         // RUN DEDUP
         time_dedup.start();
         chunk_idx = dedup(sha_fingerprint);
-        time_dedup.stop();
-
         dedup_out.push_back(chunk_idx);
+        time_dedup.stop();
     }
+
+    cout << "Size of dedup is : " << dedup_out.size() << endl;
 
     // RUN LZW
     time_lzw.start();
@@ -192,28 +231,64 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer lzw_i
 
     dev.queue.enqueueTask(dev.kernel, &write_event, &compute_event[0]);
 
+    clWaitForEvents(1, (const cl_event *)&compute_event[0]);
+
     // Profiling the kernel.
-    // compute_event[0].wait();
-    // total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() -
-    // compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    /* compute_event[0].wait(); */
+    /* total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() - */
+    /* compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>(); */
 
     dev.queue.enqueueMigrateMemObjects({lzw_output_buffer, out_packet_lengths_buffer}, CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
     clWaitForEvents(1, (const cl_event *)&done_event[0]);
     time_lzw.stop();
 
-    if (r_data->output_code_lengths[0]) {
+    if (output_code_lengths[0]) {
         printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
         exit(EXIT_FAILURE);
     }
 
-    uint32_t *output_codes_ptr = r_data->output_codes;
+    uint32_t *output_codes_ptr = output_codes;
 
-    for (int i = 0; i < (int)dedup_out.size(); i++) {
-        if (dedup_out[i] == -1) {
-            packet_len = ((r_data->output_code_lengths[i+1] * 12) / 8);
-            packet_len = (r_data->output_code_lengths[i+1] % 2 != 0) ? packet_len + 1 : packet_len;
+    cout << "The number of chunks as per chunk_indices is : " << chunk_indices[0] << endl;
 
-            unsigned char *data_packet = create_packet(chunk_idx, r_data->output_code_lengths[i+1], output_codes_ptr, packet_len);
+    for (int i = 1; i <= (int)chunk_indices[0] - 1; i++) {
+        std::string s;
+        char *temp = (char *)host_input + chunk_indices[i];
+        uint32_t count = chunk_indices[i];
+
+        while (count++ < chunk_indices[i+1]) {
+            s += *temp;
+            temp += 1;
+        }
+
+        std::vector<int> output_code = encoding(s);
+
+        if (output_code_lengths[i] != output_code.size()) {
+            cout << "TEST FAILED!!" << endl;
+            cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
+            cout << output_code_lengths[i] << "|" << output_code.size() << "at i = " << i << endl;
+            exit(EXIT_FAILURE);
+        }
+
+        for (int j = 0; j < (int)output_code.size(); j++) {
+            if (output_code[j] != output_codes_ptr[j]) {
+                cout << "FAILURE!!" << endl;
+                cout << output_code[i] << "|" << output_codes_ptr[j] << " at j = " << j
+                     << endl;
+            }
+        }
+
+        output_codes_ptr += output_code_lengths[i];
+    }
+
+    output_codes_ptr = output_codes;
+
+    for (int i = 1; i < (int)chunk_indices[0]; i++) {
+        if (dedup_out[i-1] == -1) {
+            packet_len = ((output_code_lengths[i] * 12) / 8);
+            packet_len = (output_code_lengths[i] % 2 != 0) ? packet_len + 1 : packet_len;
+
+            unsigned char *data_packet = create_packet(chunk_idx, output_code_lengths[i], output_codes_ptr, packet_len);
 
             header = packet_len << 1;
             // fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
@@ -225,20 +300,21 @@ static void compression_pipeline(RawData *r_data, CLDevice dev, cl::Buffer lzw_i
 
             // free(data_packet);
         } else {
-            header = (chunk_idx << 1) | 1;
+            header = (dedup_out[i-1] << 1) | 1;
             // fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
             final_data.push_back({{header, -1}, NULL});
             dedup_bytes += 4;
         }
 
-        output_codes_ptr += r_data->output_code_lengths[i+1];
+        output_codes_ptr += output_code_lengths[i];
+        cout << "This is current out packet length : " << output_code_lengths[i] << endl;
     }
     total_time.stop();
 
     for (auto it: final_data) {
-        if (it.second == NULL) {
+        if (it.second != NULL) {
             fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
-            fwrite(&it.second, sizeof(unsigned char), it.first.second, r_data->fptr_write);
+            fwrite(it.second, sizeof(unsigned char), it.first.second, r_data->fptr_write);
             free(it.second);
         } else {
             fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
@@ -309,19 +385,19 @@ int main(int argc, char *argv[]) {
     // ------------------------------------------------------------------------------------
 
     cl::Buffer lzw_input_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * NUM_PACKETS * blocksize, NULL, &err);
-    r_data->host_input = (unsigned char *)dev.queue.enqueueMapBuffer(lzw_input_buffer,
+    unsigned char *host_input = (unsigned char *)dev.queue.enqueueMapBuffer(lzw_input_buffer,
                                                 CL_TRUE, CL_MAP_WRITE, 0, sizeof(unsigned char) * NUM_PACKETS * blocksize);
 
-    cl::Buffer lzw_output_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
-    r_data->output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(lzw_output_buffer,
-                                                CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
+    cl::Buffer lzw_output_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err);
+    uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(lzw_output_buffer,
+                                                CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE);
 
-    cl::Buffer chunk_indices_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
-    r_data->chunk_indices = (uint32_t *)dev.queue.enqueueMapBuffer(chunk_indices_buffer,
-                                                CL_TRUE, CL_MAP_WRITE, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
+    cl::Buffer chunk_indices_buffer = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * MAX_LZW_CHUNKS, NULL, &err);
+    uint32_t *chunk_indices = (uint32_t *)dev.queue.enqueueMapBuffer(chunk_indices_buffer,
+                                                CL_TRUE, CL_MAP_WRITE, 0, sizeof(uint32_t) * MAX_LZW_CHUNKS);
 
     cl::Buffer out_packet_lengths_buffer = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
-    r_data->output_code_lengths = (uint32_t *)dev.queue.enqueueMapBuffer(out_packet_lengths_buffer,
+    uint32_t *output_code_lengths = (uint32_t *)dev.queue.enqueueMapBuffer(out_packet_lengths_buffer,
                                                 CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
 
     // Loop until last message
@@ -351,7 +427,7 @@ int main(int argc, char *argv[]) {
 
         if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) || done == 1) {
             compression_timer.start();
-            compression_pipeline(r_data, dev, lzw_input_buffer, lzw_output_buffer,
+            compression_pipeline(r_data, host_input, output_codes, chunk_indices, output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
                                  chunk_indices_buffer, out_packet_lengths_buffer);
             compression_timer.stop();
             writer = 0;
@@ -364,10 +440,10 @@ int main(int argc, char *argv[]) {
         free(input[i]);
 
     fclose(r_data->fptr_write);
-    dev.queue.enqueueUnmapMemObject(lzw_input_buffer, r_data->host_input);
-    dev.queue.enqueueUnmapMemObject(lzw_output_buffer, r_data->output_codes);
-    dev.queue.enqueueUnmapMemObject(chunk_indices_buffer, r_data->chunk_indices);
-    dev.queue.enqueueUnmapMemObject(out_packet_lengths_buffer, r_data->output_code_lengths);
+    dev.queue.enqueueUnmapMemObject(lzw_input_buffer, host_input);
+    dev.queue.enqueueUnmapMemObject(lzw_output_buffer, output_codes);
+    dev.queue.enqueueUnmapMemObject(chunk_indices_buffer, chunk_indices);
+    dev.queue.enqueueUnmapMemObject(out_packet_lengths_buffer, output_code_lengths);
     dev.queue.finish();
 
     free(r_data->pipeline_buffer);
@@ -379,7 +455,7 @@ int main(int argc, char *argv[]) {
     cout << "Total latency of LZW is: " << time_lzw.latency() << " ms." << endl;
     cout << "Total latency of SHA256 is: " << time_sha.latency() << " ms." << endl;
     cout << "Total latency of DeDup is: " << time_dedup.latency() << " ms." << endl;
-    cout << "Total time taken: " << total_time.latency() << " ns." << endl;
+    cout << "Total time taken: " << total_time.latency() << " ms." << endl;
     cout << "---------------- Average Latencies ------------" << endl;
     cout << "Average latency of CDC per loop iteration is: " << time_cdc.avg_latency() << " ms." << endl;
     cout << "Average latency of LZW per loop iteration is: " << time_lzw.avg_latency() << " ms." << endl;
@@ -393,18 +469,50 @@ int main(int argc, char *argv[]) {
     float ethernet_latency = ethernet_timer.latency() / 1000.0;
     float compression_latency = compression_timer.latency() / 1000.0;
     float compression_latency_total_time = total_time.latency() / 1000.0;
+
+    float cdc_latency_total_time = time_cdc.latency() / 1000.0;
+    float sha_latency_total_time = time_sha.latency() / 1000.0;
+    float lzw_latency_total_time = time_lzw.latency() / 1000.0;
+    float dedup_latency_total_time = time_dedup.latency() / 1000.0;
+
     float compression_throughput = (offset * 8 / 1000000.0) / compression_latency; // Mb/s
     float compression_throughput_2 = (offset * 8 / 1000000.0) / compression_latency_total_time; // Mb/s
+
+    float cdc_throughput = (offset * 8 / 1000000.0) / cdc_latency_total_time;     // Mb/s
+    float sha_throughput = (offset * 8 / 1000000.0) / sha_latency_total_time;     // Mb/s
+    float lzw_throughput = (offset * 8 / 1000000.0) / lzw_latency_total_time;   // Mb/s
+    float dedup_throughput = (offset * 8 / 1000000.0) / dedup_latency_total_time; // Mb/s
+
     float ethernet_throughput = (offset * 8 / 1000000.0) / ethernet_latency; // Mb/s
+
     cout << "Ethernet Latency: " << ethernet_latency << "s." << endl;
     cout << "Bytes Received: " << offset << "B." << endl;
     cout << "Latency for Compression: " << compression_latency << "s." << endl;
     cout << "Latency for Compression (without fwrite): " << compression_latency_total_time << "s." << endl;
+
+    std::cout << "\n";
+
+    cout << "Latency for CDC: " << cdc_latency_total_time << "s." << endl;
+    cout << "Latency for SHA: " << sha_latency_total_time << "s." << endl;
+    cout << "Latency for LZW: " << lzw_latency_total_time << "s." << endl;
+    cout << "Latency for DEDUP: " << dedup_latency_total_time << "s." << endl;
+
+    std::cout << "\n";
+
+    cout << "CDC Throughput: " << cdc_throughput << "Mb/s." << endl;
+    cout << "SHA Throughput: " << sha_throughput << "Mb/s." << endl;
+    cout << "LZW Throughput: " << lzw_throughput << "Mb/s." << endl;
+    cout << "DEDUP Throughput: " << dedup_throughput << "Mb/s." << endl;
+
+    std::cout << "\n";
+
     cout << "Ethernet Throughput: " << ethernet_throughput << "Mb/s." << endl;
     cout << "Application Throughput: " << compression_throughput << "Mb/s." << endl;
     cout << "Application Throughput (without fwrite): " << compression_throughput_2 << "Mb/s." << endl;
     cout << "Bytes Contributed by Deduplication: " << dedup_bytes << "B." << endl;
     cout << "Bytes Contributed by LZW: " << lzw_bytes << "B." << endl;
+
+    std::cout << "\n";
 
     return 0;
 }

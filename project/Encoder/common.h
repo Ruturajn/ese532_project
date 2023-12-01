@@ -8,8 +8,10 @@
 #include <stdbool.h>
 
 #define MAX_CHUNK_SIZE 8192
+#define MAX_OUTPUT_BUF_SIZE 40960
+#define MAX_LZW_CHUNKS 20
 #define CHUNK_SIZE 4096
-#define WIN_SIZE 16
+#define WIN_SIZE 12
 #define CODE_LENGTH 12
 #define MODULUS CHUNK_SIZE
 #define MODULUS_MASK (MODULUS - 1) // This is used when performing modulus with MODULUS.
@@ -51,5 +53,5 @@ int64_t dedup(string sha_fingerprint);
 /* void lzw(unsigned char *input, uint32_t *lzw_codes, */
 /*          uint32_t *chunk_indices, uint32_t *out_packet_lengths); */
 void lzw(unsigned char input[16384], uint32_t lzw_codes[40960],
-         uint32_t chunk_indices[4096], uint32_t out_packet_lengths[8192], int num_chunks);
+         uint32_t chunk_indices[20], uint32_t out_packet_lengths[8192]);
 #endif
