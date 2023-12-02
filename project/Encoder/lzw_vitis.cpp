@@ -337,6 +337,5 @@ LOOP5:
 
     // The first element of the out_packet_lengths is going to signify
     // failure to insert into the associative memory.
-    // out_packet_lengths[0] = generic_info[INFO_FAILURE] + lzw_codes[0];
-    out_packet_lengths[0] = lzw_codes[0];
+    out_packet_lengths[0] = generic_info[INFO_FAILURE];
 }

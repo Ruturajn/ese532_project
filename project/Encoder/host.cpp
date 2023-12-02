@@ -253,10 +253,10 @@ static void compression_pipeline(
 
     // cout << "The first LZW code is : " << output_code_lengths[0] << endl;
 
-    /* if (output_code_lengths[0]) { */
-    /*     printf("FAILED TO INSERT INTO ASSOC MEM!!\n"); */
-    /*     exit(EXIT_FAILURE); */
-    /* } */
+    if (output_code_lengths[0]) {
+        printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
+        exit(EXIT_FAILURE);
+    }
 
     // uint32_t *output_codes_ptr = output_codes;
 
