@@ -6,27 +6,27 @@
 #define CL_HPP_MINIMUM_OPENCL_VERSION 120
 #define CL_HPP_ENABLE_PROGRAM_CONSTRUCTION_FROM_ARRAY_COMPATIBILITY 1
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
-#define INPUT_FRAME_WIDTH  (960)
+#define INPUT_FRAME_WIDTH (960)
 #define INPUT_FRAME_HEIGHT (540)
 #define FRAMES (200)
-#define FRAME_SIZE (INPUT_FRAME_WIDTH*INPUT_FRAME_HEIGHT)
+#define FRAME_SIZE (INPUT_FRAME_WIDTH * INPUT_FRAME_HEIGHT)
 // OCL_CHECK doesn't work if call has templatized function call
 #define OCL_CHECK(error, call)                                                 \
-  call;                                                                        \
-  if (error != CL_SUCCESS) {                                                   \
-    printf("%s:%d Error calling " #call ", error code is: %d\n", __FILE__,     \
-           __LINE__, error);                                                   \
-    exit(EXIT_FAILURE);                                                        \
-  }
+    call;                                                                      \
+    if (error != CL_SUCCESS) {                                                 \
+        printf("%s:%d Error calling " #call ", error code is: %d\n", __FILE__, \
+               __LINE__, error);                                               \
+        exit(EXIT_FAILURE);                                                    \
+    }
 
-#include <vector>
-#include <unistd.h>
-#include <iostream>
-#include <fstream>
-#include <cstdlib>
-#include <stdio.h>
-#include <CL/cl2.hpp>
 #include "EventTimer.h"
+#include <CL/cl2.hpp>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <stdio.h>
+#include <unistd.h>
+#include <vector>
 
 // When creating a buffer with user pointer (CL_MEM_USE_HOST_PTR), under the
 // hood
@@ -43,44 +43,44 @@
 // page boundary. It will ensure that user buffer will be used when user create
 // Buffer/Mem Object with CL_MEM_USE_HOST_PTR.
 template <typename T> struct aligned_allocator {
-  using value_type = T;
+    using value_type = T;
 
-  aligned_allocator() {}
+    aligned_allocator() {}
 
-  aligned_allocator(const aligned_allocator &) {}
+    aligned_allocator(const aligned_allocator &) {}
 
-  template <typename U> aligned_allocator(const aligned_allocator<U> &) {}
+    template <typename U> aligned_allocator(const aligned_allocator<U> &) {}
 
-  T *allocate(std::size_t num) {
-    void *ptr = nullptr;
+    T *allocate(std::size_t num) {
+        void *ptr = nullptr;
 
 #if defined(_WINDOWS)
-    {
-      ptr = _aligned_malloc(num * sizeof(T), 4096);
-      if (ptr == NULL) {
-        std::cout << "Failed to allocate memory" << std::endl;
-        exit(EXIT_FAILURE);
-      }
-    }
+        {
+            ptr = _aligned_malloc(num * sizeof(T), 4096);
+            if (ptr == NULL) {
+                std::cout << "Failed to allocate memory" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+        }
 #else
-    {
-      if (posix_memalign(&ptr, 4096, num * sizeof(T)))
-        throw std::bad_alloc();
-    }
+        {
+            if (posix_memalign(&ptr, 4096, num * sizeof(T)))
+                throw std::bad_alloc();
+        }
 #endif
-    return reinterpret_cast<T *>(ptr);
-  }
-  void deallocate(T *p, std::size_t num) {
+        return reinterpret_cast<T *>(ptr);
+    }
+    void deallocate(T *p, std::size_t num) {
 #if defined(_WINDOWS)
-    _aligned_free(p);
+        _aligned_free(p);
 #else
-    free(p);
+        free(p);
 #endif
-  }
+    }
 };
 
 std::vector<cl::Device> get_xilinx_devices();
-char* read_binary_file(const std::string &xclbin_file_name, unsigned &nb);
+char *read_binary_file(const std::string &xclbin_file_name, unsigned &nb);
 void set_callback(cl::Event event, const char *queue_name);
 void Exit_with_error(const char *s);
 void Load_data(unsigned char *Data);

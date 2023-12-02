@@ -22,7 +22,10 @@ int64_t dedup(string sha_fingerprint) {
     // ++chunk_id;
     // return -1;
 
-    bool found = (sha_chunk_id_map.find(sha_fingerprint) == sha_chunk_id_map.end() ? false : true);
+    bool found =
+        (sha_chunk_id_map.find(sha_fingerprint) == sha_chunk_id_map.end()
+             ? false
+             : true);
 
     // Perform lookup in map here.
     if (!found) {

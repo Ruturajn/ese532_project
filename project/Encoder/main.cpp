@@ -44,9 +44,11 @@ void handle_input(int argc, char *argv[], int *blocksize, char **filename) {
     }
 }
 
-static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_length, uint32_t *out_packet,
-                                    uint32_t packet_len) {
-    unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
+static unsigned char *create_packet(int32_t chunk_idx,
+                                    uint32_t out_packet_length,
+                                    uint32_t *out_packet, uint32_t packet_len) {
+    unsigned char *data =
+        (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
 
     int data_idx = 0;
@@ -100,7 +102,8 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-static void compression_pipeline(unsigned char *input, int length_sum, FILE *fptr_write) {
+static void compression_pipeline(unsigned char *input, int length_sum,
+                                 FILE *fptr_write) {
     vector<uint32_t> vect;
     string sha_fingerprint;
     int64_t chunk_idx = 0;
@@ -128,7 +131,8 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
 #endif
             out_packet = (uint32_t *)calloc(MAX_CHUNK_SIZE, sizeof(uint32_t));
             CHECK_MALLOC(out_packet, "Unable to allocate memory for LZW codes");
-            lzw(input, vect[i], vect[i + 1], out_packet, &out_packet_length, &failure, &assoc_mem);
+            lzw(input, vect[i], vect[i + 1], out_packet, &out_packet_length,
+                &failure, &assoc_mem);
 
             cout << "Associative Mem count is : " << assoc_mem << endl;
 
@@ -146,11 +150,14 @@ static void compression_pipeline(unsigned char *input, int length_sum, FILE *fpt
 #endif
 
             packet_len = ((out_packet_length * 12) / 8);
-            packet_len = (chunk_idx == -1 && (out_packet_length % 2 != 0)) ? packet_len + 1 : packet_len;
+            packet_len = (chunk_idx == -1 && (out_packet_length % 2 != 0))
+                             ? packet_len + 1
+                             : packet_len;
 
             /* printf("CODES ARRAY LENGTH : %d\n", out_packet_length); */
 
-            unsigned char *data_packet = create_packet(chunk_idx, out_packet_length, out_packet, packet_len);
+            unsigned char *data_packet = create_packet(
+                chunk_idx, out_packet_length, out_packet, packet_len);
 
             header = packet_len << 1;
             fwrite(&header, sizeof(uint32_t), 1, fptr_write);
@@ -187,7 +194,8 @@ int main(int argc, char *argv[]) {
 
 #ifdef SHA_TEST
     unsigned char text1[] = {"This is November"};
-    string hash_val = "d3c5566f1395fac4fdd9d3be948e899b26834ad349b9aded0d8b7e030970f760";
+    string hash_val =
+        "d3c5566f1395fac4fdd9d3be948e899b26834ad349b9aded0d8b7e030970f760";
     string out = sha_256(text1, 0, strlen((const char *)text1));
     string out1 = sha_256(text1, 0, strlen((const char *)text1));
 
@@ -230,11 +238,14 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    unsigned char *pipeline_buffer = (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
-    CHECK_MALLOC(pipeline_buffer, "Unable to allocate memory for pipeline buffer");
+    unsigned char *pipeline_buffer =
+        (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
+    CHECK_MALLOC(pipeline_buffer,
+                 "Unable to allocate memory for pipeline buffer");
 
     for (int i = 0; i < (NUM_PACKETS); i++) {
-        input[i] = (unsigned char *)calloc((blocksize + HEADER), sizeof(unsigned char));
+        input[i] = (unsigned char *)calloc((blocksize + HEADER),
+                                           sizeof(unsigned char));
         CHECK_MALLOC(input, "Unable to allocate memory for input buffer");
     }
 
@@ -318,7 +329,8 @@ int main(int argc, char *argv[]) {
     cout << "Bytes Received: " << offset << "B." << endl;
     cout << "Latency for Compression: " << compression_latency << "s." << endl;
     cout << "Application Throughput: " << throughput << "Mb/s." << endl;
-    cout << "Bytes Contributed by Deduplication: " << dedup_bytes << "B." << endl;
+    cout << "Bytes Contributed by Deduplication: " << dedup_bytes << "B."
+         << endl;
     cout << "Bytes Contributed by LZW: " << lzw_bytes << "B." << endl;
 
     return 0;

@@ -54,7 +54,8 @@ typedef struct CLDevice {
     cl::CommandQueue queue;
 } CLDevice;
 
-void handle_input(int argc, char *argv[], int *blocksize, char **filename, char **kernel_name) {
+void handle_input(int argc, char *argv[], int *blocksize, char **filename,
+                  char **kernel_name) {
     int x;
     extern char *optarg;
 
@@ -79,9 +80,11 @@ void handle_input(int argc, char *argv[], int *blocksize, char **filename, char 
     }
 }
 
-static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_length, uint32_t *out_packet,
-                                    uint32_t packet_len) {
-    unsigned char *data = (unsigned char *)calloc(packet_len, sizeof(unsigned char));
+static unsigned char *create_packet(int32_t chunk_idx,
+                                    uint32_t out_packet_length,
+                                    uint32_t *out_packet, uint32_t packet_len) {
+    unsigned char *data =
+        (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
 
     uint32_t data_idx = 0;
@@ -140,7 +143,7 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
 //         ch += char(i);
 //         table[ch] = i;
 //     }
-// 
+//
 //     std::string p = "", c = "";
 //     p += s1[0];
 //     int code = 256;
@@ -166,10 +169,11 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
 //     return output_code;
 // }
 
-static void compression_pipeline(RawData *r_data, unsigned char *host_input, uint32_t *output_codes,
-                                 uint32_t *chunk_indices, uint32_t *output_code_lengths, CLDevice dev,
-                                 cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
-                                 cl::Buffer chunk_indices_buffer, cl::Buffer out_packet_lengths_buffer) {
+static void compression_pipeline(
+    RawData *r_data, unsigned char *host_input, uint32_t *output_codes,
+    uint32_t *chunk_indices, uint32_t *output_code_lengths, CLDevice dev,
+    cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
+    cl::Buffer chunk_indices_buffer, cl::Buffer out_packet_lengths_buffer) {
 
     vector<uint32_t> vect;
     string sha_fingerprint;
@@ -196,7 +200,8 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
     cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
     time_cdc.stop();
 
-    memcpy(host_input, r_data->pipeline_buffer, sizeof(unsigned char) * r_data->length_sum);
+    memcpy(host_input, r_data->pipeline_buffer,
+           sizeof(unsigned char) * r_data->length_sum);
 
     chunk_indices[0] = vect.size();
 
@@ -205,7 +210,8 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
     for (int i = 0; i < (int)(vect.size() - 1); i++) {
         // RUN SHA
         time_sha.start();
-        sha_fingerprint = sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
+        sha_fingerprint =
+            sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
         time_sha.stop();
 
         // RUN DEDUP
@@ -225,7 +231,8 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
     dev.kernel.setArg(2, chunk_indices_buffer);
     dev.kernel.setArg(3, out_packet_lengths_buffer);
 
-    dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer}, 0 /* 0 means from host*/, NULL,
+    dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer},
+                                       0 /* 0 means from host*/, NULL,
                                        &write_event[0]);
 
     dev.queue.enqueueTask(dev.kernel, &write_event, &compute_event[0]);
@@ -234,11 +241,13 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
 
     // Profiling the kernel.
     /* compute_event[0].wait(); */
-    /* total_time_2 += compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() - */
+    /* total_time_2 +=
+     * compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() - */
     /* compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>(); */
 
-    dev.queue.enqueueMigrateMemObjects({lzw_output_buffer, out_packet_lengths_buffer}, CL_MIGRATE_MEM_OBJECT_HOST,
-                                       &compute_event, &done_event[0]);
+    dev.queue.enqueueMigrateMemObjects(
+        {lzw_output_buffer, out_packet_lengths_buffer},
+        CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
     clWaitForEvents(1, (const cl_event *)&done_event[0]);
     time_lzw.stop();
 
@@ -256,7 +265,8 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
 
     // cout << "\n";
 
-    // cout << "The number of chunks as per chunk_indices is : " << chunk_indices[0] << endl;
+    // cout << "The number of chunks as per chunk_indices is : " <<
+    // chunk_indices[0] << endl;
 
     // uint64_t idx_offset = 0;
 
@@ -275,14 +285,15 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
     //     if (output_code_lengths[i] != codes.size()) {
     //         cout << "TEST FAILED!!" << endl;
     //         cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
-    //         cout << output_code_lengths[i] << "|" << codes.size() << "at i = " << i << endl;
-    //         exit(EXIT_FAILURE);
+    //         cout << output_code_lengths[i] << "|" << codes.size() << "at i =
+    //         " << i << endl; exit(EXIT_FAILURE);
     //     }
 
     //     for (int j = 0; j < (int)codes.size(); j++) {
     //         if (codes[j] != output_codes[j+idx_offset]) {
     //             cout << "FAILURE!!" << endl;
-    //             cout << codes[j] << "|" << output_codes[j+idx_offset] << " at j = " << j << endl;
+    //             cout << codes[j] << "|" << output_codes[j+idx_offset] << " at
+    //             j = " << j << endl;
     //         }
     //     }
 
@@ -294,16 +305,20 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
     for (int i = 1; i < (int)chunk_indices[0]; i++) {
         if (dedup_out[i - 1] == -1) {
             packet_len = ((output_code_lengths[i] * 12) / 8);
-            packet_len = (output_code_lengths[i] % 2 != 0) ? packet_len + 1 : packet_len;
+            packet_len =
+                (output_code_lengths[i] % 2 != 0) ? packet_len + 1 : packet_len;
 
-            unsigned char *data_packet = create_packet(chunk_idx, output_code_lengths[i], output_codes_ptr, packet_len);
+            unsigned char *data_packet =
+                create_packet(chunk_idx, output_code_lengths[i],
+                              output_codes_ptr, packet_len);
 
             header = packet_len << 1;
             // fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
             final_data.push_back({{header, packet_len}, data_packet});
             lzw_bytes += 4;
 
-            // fwrite(data_packet, sizeof(unsigned char), packet_len, r_data->fptr_write);
+            // fwrite(data_packet, sizeof(unsigned char), packet_len,
+            // r_data->fptr_write);
             lzw_bytes += packet_len;
 
             // free(data_packet);
@@ -315,21 +330,24 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
         }
 
         output_codes_ptr += output_code_lengths[i];
-        // cout << "This is current out packet length : " << output_code_lengths[i] << endl;
+        // cout << "This is current out packet length : " <<
+        // output_code_lengths[i] << endl;
     }
     total_time.stop();
 
     for (auto it : final_data) {
         if (it.second != NULL) {
             fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
-            fwrite(it.second, sizeof(unsigned char), it.first.second, r_data->fptr_write);
+            fwrite(it.second, sizeof(unsigned char), it.first.second,
+                   r_data->fptr_write);
             free(it.second);
         } else {
             fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
         }
     }
 
-    cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2 << " ms." << endl;
+    cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2
+         << " ms." << endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -359,11 +377,14 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    r_data->pipeline_buffer = (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
-    CHECK_MALLOC(r_data->pipeline_buffer, "Unable to allocate memory for pipeline buffer");
+    r_data->pipeline_buffer =
+        (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
+    CHECK_MALLOC(r_data->pipeline_buffer,
+                 "Unable to allocate memory for pipeline buffer");
 
     for (int i = 0; i < (NUM_PACKETS); i++) {
-        input[i] = (unsigned char *)calloc((blocksize + HEADER), sizeof(unsigned char));
+        input[i] = (unsigned char *)calloc((blocksize + HEADER),
+                                           sizeof(unsigned char));
         CHECK_MALLOC(input, "Unable to allocate memory for input buffer");
     }
 
@@ -385,7 +406,10 @@ int main(int argc, char *argv[]) {
     cl::Program::Binaries bins{{fileBuf, fileBufSize}};
     cl::Program program(context, devices, bins, NULL, &err);
     CLDevice dev;
-    dev.queue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err);
+    dev.queue = cl::CommandQueue(context, device,
+                                 CL_QUEUE_PROFILING_ENABLE |
+                                     CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
+                                 &err);
     dev.kernel = cl::Kernel(program, "lzw", &err);
 
     // ------------------------------------------------------------------------------------
@@ -393,24 +417,32 @@ int main(int argc, char *argv[]) {
     // ------------------------------------------------------------------------------------
 
     cl::Buffer lzw_input_buffer =
-        cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * NUM_PACKETS * blocksize, NULL, &err);
+        cl::Buffer(context, CL_MEM_READ_ONLY,
+                   sizeof(unsigned char) * NUM_PACKETS * blocksize, NULL, &err);
     unsigned char *host_input = (unsigned char *)dev.queue.enqueueMapBuffer(
-        lzw_input_buffer, CL_TRUE, CL_MAP_WRITE, 0, sizeof(unsigned char) * NUM_PACKETS * blocksize);
+        lzw_input_buffer, CL_TRUE, CL_MAP_WRITE, 0,
+        sizeof(unsigned char) * NUM_PACKETS * blocksize);
 
     cl::Buffer lzw_output_buffer =
-        cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err);
-    uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0,
-                                                                    sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE);
+        cl::Buffer(context, CL_MEM_WRITE_ONLY,
+                   sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err);
+    uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(
+        lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0,
+        sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE);
 
     cl::Buffer chunk_indices_buffer =
-        cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * MAX_LZW_CHUNKS, NULL, &err);
-    uint32_t *chunk_indices = (uint32_t *)dev.queue.enqueueMapBuffer(chunk_indices_buffer, CL_TRUE, CL_MAP_WRITE, 0,
-                                                                     sizeof(uint32_t) * MAX_LZW_CHUNKS);
+        cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * MAX_LZW_CHUNKS,
+                   NULL, &err);
+    uint32_t *chunk_indices = (uint32_t *)dev.queue.enqueueMapBuffer(
+        chunk_indices_buffer, CL_TRUE, CL_MAP_WRITE, 0,
+        sizeof(uint32_t) * MAX_LZW_CHUNKS);
 
     cl::Buffer out_packet_lengths_buffer =
-        cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
+        cl::Buffer(context, CL_MEM_WRITE_ONLY,
+                   sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
     uint32_t *output_code_lengths = (uint32_t *)dev.queue.enqueueMapBuffer(
-        out_packet_lengths_buffer, CL_TRUE, CL_MAP_READ, 0, sizeof(uint32_t) * MAX_CHUNK_SIZE);
+        out_packet_lengths_buffer, CL_TRUE, CL_MAP_READ, 0,
+        sizeof(uint32_t) * MAX_CHUNK_SIZE);
 
     // Loop until last message
     while (!done) {
@@ -435,12 +467,16 @@ int main(int argc, char *argv[]) {
         // at appropriate boundaries. Call the compression pipeline function
         // after the buffer is completely filled.
         if (length != 0)
-            memcpy(r_data->pipeline_buffer + (writer * blocksize), input[writer] + 2, length);
+            memcpy(r_data->pipeline_buffer + (writer * blocksize),
+                   input[writer] + 2, length);
 
-        if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) || done == 1) {
+        if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) ||
+            done == 1) {
             compression_timer.start();
-            compression_pipeline(r_data, host_input, output_codes, chunk_indices, output_code_lengths, dev,
-                                 lzw_input_buffer, lzw_output_buffer, chunk_indices_buffer, out_packet_lengths_buffer);
+            compression_pipeline(
+                r_data, host_input, output_codes, chunk_indices,
+                output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
+                chunk_indices_buffer, out_packet_lengths_buffer);
             compression_timer.stop();
             writer = 0;
             r_data->length_sum = 0;
@@ -455,7 +491,8 @@ int main(int argc, char *argv[]) {
     dev.queue.enqueueUnmapMemObject(lzw_input_buffer, host_input);
     dev.queue.enqueueUnmapMemObject(lzw_output_buffer, output_codes);
     dev.queue.enqueueUnmapMemObject(chunk_indices_buffer, chunk_indices);
-    dev.queue.enqueueUnmapMemObject(out_packet_lengths_buffer, output_code_lengths);
+    dev.queue.enqueueUnmapMemObject(out_packet_lengths_buffer,
+                                    output_code_lengths);
     dev.queue.finish();
 
     free(r_data->pipeline_buffer);
@@ -465,15 +502,22 @@ int main(int argc, char *argv[]) {
     cout << "--------------- Total Latencies ---------------" << endl;
     cout << "Total latency of CDC is: " << time_cdc.latency() << " ms." << endl;
     cout << "Total latency of LZW is: " << time_lzw.latency() << " ms." << endl;
-    cout << "Total latency of SHA256 is: " << time_sha.latency() << " ms." << endl;
-    cout << "Total latency of DeDup is: " << time_dedup.latency() << " ms." << endl;
+    cout << "Total latency of SHA256 is: " << time_sha.latency() << " ms."
+         << endl;
+    cout << "Total latency of DeDup is: " << time_dedup.latency() << " ms."
+         << endl;
     cout << "Total time taken: " << total_time.latency() << " ms." << endl;
     cout << "---------------- Average Latencies ------------" << endl;
-    cout << "Average latency of CDC per loop iteration is: " << time_cdc.avg_latency() << " ms." << endl;
-    cout << "Average latency of LZW per loop iteration is: " << time_lzw.avg_latency() << " ms." << endl;
-    cout << "Average latency of SHA256 per loop iteration is: " << time_sha.avg_latency() << " ms." << endl;
-    cout << "Average latency of DeDup per loop iteration is: " << time_dedup.avg_latency() << " ms." << endl;
-    cout << "Average latency: " << total_time.avg_latency() << " ms." << std::endl;
+    cout << "Average latency of CDC per loop iteration is: "
+         << time_cdc.avg_latency() << " ms." << endl;
+    cout << "Average latency of LZW per loop iteration is: "
+         << time_lzw.avg_latency() << " ms." << endl;
+    cout << "Average latency of SHA256 per loop iteration is: "
+         << time_sha.avg_latency() << " ms." << endl;
+    cout << "Average latency of DeDup per loop iteration is: "
+         << time_dedup.avg_latency() << " ms." << endl;
+    cout << "Average latency: " << total_time.avg_latency() << " ms."
+         << std::endl;
 
     std::cout << "\n\n";
 
@@ -487,20 +531,28 @@ int main(int argc, char *argv[]) {
     float lzw_latency_total_time = time_lzw.latency() / 1000.0;
     float dedup_latency_total_time = time_dedup.latency() / 1000.0;
 
-    float compression_throughput = (offset * 8 / 1000000.0) / compression_latency;              // Mb/s
-    float compression_throughput_2 = (offset * 8 / 1000000.0) / compression_latency_total_time; // Mb/s
+    float compression_throughput =
+        (offset * 8 / 1000000.0) / compression_latency; // Mb/s
+    float compression_throughput_2 =
+        (offset * 8 / 1000000.0) / compression_latency_total_time; // Mb/s
 
-    float cdc_throughput = (offset * 8 / 1000000.0) / cdc_latency_total_time;     // Mb/s
-    float sha_throughput = (offset * 8 / 1000000.0) / sha_latency_total_time;     // Mb/s
-    float lzw_throughput = (offset * 8 / 1000000.0) / lzw_latency_total_time;     // Mb/s
-    float dedup_throughput = (offset * 8 / 1000000.0) / dedup_latency_total_time; // Mb/s
+    float cdc_throughput =
+        (offset * 8 / 1000000.0) / cdc_latency_total_time; // Mb/s
+    float sha_throughput =
+        (offset * 8 / 1000000.0) / sha_latency_total_time; // Mb/s
+    float lzw_throughput =
+        (offset * 8 / 1000000.0) / lzw_latency_total_time; // Mb/s
+    float dedup_throughput =
+        (offset * 8 / 1000000.0) / dedup_latency_total_time; // Mb/s
 
-    float ethernet_throughput = (offset * 8 / 1000000.0) / ethernet_latency; // Mb/s
+    float ethernet_throughput =
+        (offset * 8 / 1000000.0) / ethernet_latency; // Mb/s
 
     cout << "Ethernet Latency: " << ethernet_latency << "s." << endl;
     cout << "Bytes Received: " << offset << "B." << endl;
     cout << "Latency for Compression: " << compression_latency << "s." << endl;
-    cout << "Latency for Compression (without fwrite): " << compression_latency_total_time << "s." << endl;
+    cout << "Latency for Compression (without fwrite): "
+         << compression_latency_total_time << "s." << endl;
 
     std::cout << "\n";
 
@@ -519,9 +571,12 @@ int main(int argc, char *argv[]) {
     std::cout << "\n";
 
     cout << "Ethernet Throughput: " << ethernet_throughput << "Mb/s." << endl;
-    cout << "Application Throughput: " << compression_throughput << "Mb/s." << endl;
-    cout << "Application Throughput (without fwrite): " << compression_throughput_2 << "Mb/s." << endl;
-    cout << "Bytes Contributed by Deduplication: " << dedup_bytes << "B." << endl;
+    cout << "Application Throughput: " << compression_throughput << "Mb/s."
+         << endl;
+    cout << "Application Throughput (without fwrite): "
+         << compression_throughput_2 << "Mb/s." << endl;
+    cout << "Bytes Contributed by Deduplication: " << dedup_bytes << "B."
+         << endl;
     cout << "Bytes Contributed by LZW: " << lzw_bytes << "B." << endl;
 
     std::cout << "\n";

@@ -98,18 +98,18 @@ int main() {
 
     uint32_t *lzw_codes_ptr = lzw_codes;
 
-//    if (out_packet_lengths[0]) {
-//        cout << "TEST FAILED!!" << endl;
-//        cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
-//        exit(EXIT_FAILURE);
-//    }
+    //    if (out_packet_lengths[0]) {
+    //        cout << "TEST FAILED!!" << endl;
+    //        cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
+    //        exit(EXIT_FAILURE);
+    //    }
 
     for (int i = 1; i <= chunk_indices[0] - 1; i++) {
         std::string s;
         char *temp = (char *)file_data + chunk_indices[i];
         int count = chunk_indices[i];
 
-        while (count++ < chunk_indices[i+1]) {
+        while (count++ < chunk_indices[i + 1]) {
             s += *temp;
             temp += 1;
         }
@@ -119,15 +119,16 @@ int main() {
         if (out_packet_lengths[i] != output_code.size()) {
             cout << "TEST FAILED!!" << endl;
             cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
-            cout << out_packet_lengths[i] << "|" << output_code.size() << "at i = " << i << endl;
+            cout << out_packet_lengths[i] << "|" << output_code.size()
+                 << "at i = " << i << endl;
             exit(EXIT_FAILURE);
         }
 
         for (int j = 0; j < output_code.size(); j++) {
             if (output_code[j] != lzw_codes_ptr[j]) {
                 cout << "FAILURE!!" << endl;
-                cout << output_code[i] << "|" << lzw_codes_ptr[j] << " at j = " << j
-                     << endl;
+                cout << output_code[i] << "|" << lzw_codes_ptr[j]
+                     << " at j = " << j << endl;
             }
         }
 

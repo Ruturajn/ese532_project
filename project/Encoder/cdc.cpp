@@ -4,8 +4,10 @@
 
 using namespace std;
 
-uint64_t pow_primes[18] = {1, 3, 9, 27, 81, 243, 729, 2187, 6561, 19683, 59049,
-                           177147, 531441, 1594323, 4782969, 14348907, 43046721, 129140163};
+uint64_t pow_primes[18] = {1,        3,        9,        27,      81,
+                           243,      729,      2187,     6561,    19683,
+                           59049,    177147,   531441,   1594323, 4782969,
+                           14348907, 43046721, 129140163};
 
 #define PRIME_WIN_SIZE_POWER 129140163
 
@@ -21,13 +23,15 @@ void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
     uint64_t hash = hash_func(buff, 0);
 
     for (unsigned int i = 0; i < buff_size; i++) {
-        if (((hash & MODULUS_MASK) == TARGET) || ((i & MODULUS_MASK) == TARGET)) {
+        if (((hash & MODULUS_MASK) == TARGET) ||
+            ((i & MODULUS_MASK) == TARGET)) {
 #ifdef CDC_DEBUG
             cout << i << endl;
 #endif
             vect.push_back(i);
         }
-        hash = (hash * PRIME) - ((uint64_t)buff[i] * PRIME_WIN_SIZE_POWER) + ((uint64_t)buff[i + WIN_SIZE] * PRIME);
+        hash = (hash * PRIME) - ((uint64_t)buff[i] * PRIME_WIN_SIZE_POWER) +
+               ((uint64_t)buff[i + WIN_SIZE] * PRIME);
     }
 
     vect.push_back(buff_size);

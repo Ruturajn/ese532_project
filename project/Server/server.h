@@ -1,41 +1,38 @@
 #ifndef SERVER_H_
 #define SERVER_H_
 
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
-//#define BLOCKSIZE 8192 // Tuneable. must match the transmitter side
+// #define BLOCKSIZE 8192 // Tuneable. must match the transmitter side
 #define BLOCKSIZE 8192
 #define HEADER 2
 
 class ESE532_Server {
-public:
+  public:
+    //
+    int setup_server(int avg_blocksize);
 
-	//
-	int setup_server(int avg_blocksize);
+    //
+    int get_packet(unsigned char *buffer);
 
-	//
-	int get_packet(unsigned char* buffer);
+  protected:
+    //
+    int sockfd;
 
-protected:
+    // blocksize passed in from cli
+    int blocksize;
 
-	//
-	int sockfd;
+    // addresss information
+    struct sockaddr_in servaddr;
 
-	// blocksize passed in from cli
-	int blocksize;
+    //
+    socklen_t server_len = sizeof(servaddr);
 
-	// addresss information
-	struct sockaddr_in servaddr;
-
-	//
-	socklen_t server_len = sizeof(servaddr);
-
-	int packets_read;
-
+    int packets_read;
 };
 
 #endif

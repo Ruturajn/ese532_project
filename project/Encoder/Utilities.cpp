@@ -26,7 +26,8 @@ std::vector<cl::Device> get_xilinx_devices() {
 
 char *read_binary_file(const std::string &xclbin_file_name, unsigned &nb) {
     if (access(xclbin_file_name.c_str(), R_OK) != 0) {
-        printf("ERROR: %s xclbin not available please build\n", xclbin_file_name.c_str());
+        printf("ERROR: %s xclbin not available please build\n",
+               xclbin_file_name.c_str());
         exit(EXIT_FAILURE);
     }
     // Loading XCL Bin into char buffer
@@ -48,7 +49,8 @@ void event_cb(cl_event event1, cl_int cmd_status, void *data) {
     cl::Event event(event1, true);
     OCL_CHECK(err, err = event.getInfo(CL_EVENT_COMMAND_TYPE, &command));
     cl_int status;
-    OCL_CHECK(err, err = event.getInfo(CL_EVENT_COMMAND_EXECUTION_STATUS, &status));
+    OCL_CHECK(err,
+              err = event.getInfo(CL_EVENT_COMMAND_EXECUTION_STATUS, &status));
     const char *command_str;
     const char *status_str;
     switch (command) {
@@ -89,14 +91,16 @@ void event_cb(cl_event event1, cl_int cmd_status, void *data) {
     default:
         status_str = "unknown";
     }
-    printf("[%s]: %s %s\n", reinterpret_cast<char *>(data), status_str, command_str);
+    printf("[%s]: %s %s\n", reinterpret_cast<char *>(data), status_str,
+           command_str);
     fflush(stdout);
 }
 
 // Sets the callback for a particular event
 void set_callback(cl::Event event, const char *queue_name) {
     cl_int err;
-    OCL_CHECK(err, err = event.setCallback(CL_COMPLETE, event_cb, (void *)queue_name));
+    OCL_CHECK(err, err = event.setCallback(CL_COMPLETE, event_cb,
+                                           (void *)queue_name));
 }
 void Exit_with_error(const char *s) {
     printf("%s\n", s);
