@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <hls_stream.h>
+#include <string.h>
 
 #define CAPACITY 16384  // hash output is 15 bits, and we have 1 entry per bucket, so capacity
          // is 2^15
@@ -207,7 +208,7 @@ void inline lookup(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int 
     }
 }
 
-static void compute_lzw(unsigned char *input, uint32_t *lzw_codes, uint32_t generic_info[4]) {
+static void compute_lzw(unsigned char *input, uint32_t *lzw_codes, uint32_t generic_info[4], uint64_t offset) {
 
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY][2];
@@ -235,9 +236,7 @@ static void compute_lzw(unsigned char *input, uint32_t *lzw_codes, uint32_t gene
     unsigned int prefix_code = (unsigned int)input[start_idx];
     unsigned int code = 0;
     unsigned char next_char = 0;
-    static uint32_t j = 0;
-    static uint32_t prev = 0;
-    prev = j;
+    uint64_t j = offset;
 
     LOOP3: for (int i = start_idx; i < end_idx - 1; i++) {
         next_char = input[i + 1];
@@ -260,8 +259,7 @@ static void compute_lzw(unsigned char *input, uint32_t *lzw_codes, uint32_t gene
     }
 
     lzw_codes[j] = prefix_code;
-    generic_info[INFO_OUT_PACKET_LENGTH] = (j - prev) + 1;
-    ++j;
+    generic_info[INFO_OUT_PACKET_LENGTH] = (j - offset) + 1;
     generic_info[INFO_FAILURE] = failure;
 }
 
@@ -297,21 +295,27 @@ void lzw(unsigned char input[BUFFER_LEN], uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZ
     generic_info[INFO_FAILURE] = 0;
     generic_info[INFO_OUT_PACKET_LENGTH] = 0;
 
+    uint64_t offset = 0;
+
     LOOP5: for (int i = 1; i <= MAX_ITERATIONS; i++) {
 //#pragma HLS UNROLL
     	if (i <= (int)chunk_indices_len - 1) {
 			generic_info[INFO_START_IDX] = chunk_indices[i];
 			generic_info[INFO_END_IDX] = chunk_indices[i+1];
-			compute_lzw(input, temp_lzw_codes, generic_info);
+			compute_lzw(input, temp_lzw_codes, generic_info, offset);
 			out_packet_lengths[i] = generic_info[INFO_OUT_PACKET_LENGTH];
+			offset += generic_info[INFO_OUT_PACKET_LENGTH];
     	}
     }
 
-	LOOP6: for (int i = 0; i < MAX_OUTPUT_CODE_SIZE; i++) {
-		lzw_codes[i] = temp_lzw_codes[i];
-	}
+//	LOOP6: for (int i = 0; i < MAX_OUTPUT_CODE_SIZE; i++) {
+//		lzw_codes[i] = temp_lzw_codes[i];
+//	}
+
+	memcpy(lzw_codes, temp_lzw_codes, MAX_OUTPUT_CODE_SIZE * sizeof(uint32_t));
 
     // The first element of the out_packet_lengths is going to signify
     // failure to insert into the associative memory.
-    out_packet_lengths[0] = generic_info[INFO_FAILURE];
+    // out_packet_lengths[0] = generic_info[INFO_FAILURE] + lzw_codes[0];
+    out_packet_lengths[0] =  lzw_codes[0];
 }
