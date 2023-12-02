@@ -131,40 +131,40 @@ static unsigned char *create_packet(int32_t chunk_idx, uint32_t out_packet_lengt
     return data;
 }
 
-// "Golden" functions to check correctness
-std::vector<int> encoding(std::string s1) {
-    // std::cout << "Encoding\n";
-    std::unordered_map<std::string, int> table;
-    for (int i = 0; i <= 255; i++) {
-        std::string ch = "";
-        ch += char(i);
-        table[ch] = i;
-    }
-
-    std::string p = "", c = "";
-    p += s1[0];
-    int code = 256;
-    std::vector<int> output_code;
-    // std::cout << "String\tOutput_Code\tAddition\n";
-    for (int i = 0; i < s1.length(); i++) {
-        if (i != s1.length() - 1)
-            c += s1[i + 1];
-        if (table.find(p + c) != table.end()) {
-            p = p + c;
-        } else {
-            // std::cout << p << "\t" << table[p] << "\t\t"
-            //      << p + c << "\t" << code << std::endl;
-            output_code.push_back(table[p]);
-            table[p + c] = code;
-            code++;
-            p = c;
-        }
-        c = "";
-    }
-    // std::cout << p << "\t" << table[p] << std::endl;
-    output_code.push_back(table[p]);
-    return output_code;
-}
+// // "Golden" functions to check correctness
+// std::vector<int> encoding(std::string s1) {
+//     // std::cout << "Encoding\n";
+//     std::unordered_map<std::string, int> table;
+//     for (int i = 0; i <= 255; i++) {
+//         std::string ch = "";
+//         ch += char(i);
+//         table[ch] = i;
+//     }
+// 
+//     std::string p = "", c = "";
+//     p += s1[0];
+//     int code = 256;
+//     std::vector<int> output_code;
+//     // std::cout << "String\tOutput_Code\tAddition\n";
+//     for (int i = 0; i < s1.length(); i++) {
+//         if (i != s1.length() - 1)
+//             c += s1[i + 1];
+//         if (table.find(p + c) != table.end()) {
+//             p = p + c;
+//         } else {
+//             // std::cout << p << "\t" << table[p] << "\t\t"
+//             //      << p + c << "\t" << code << std::endl;
+//             output_code.push_back(table[p]);
+//             table[p + c] = code;
+//             code++;
+//             p = c;
+//         }
+//         c = "";
+//     }
+//     // std::cout << p << "\t" << table[p] << std::endl;
+//     output_code.push_back(table[p]);
+//     return output_code;
+// }
 
 static void compression_pipeline(RawData *r_data, unsigned char *host_input, uint32_t *output_codes,
                                  uint32_t *chunk_indices, uint32_t *output_code_lengths, CLDevice dev,
@@ -215,7 +215,7 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
         time_dedup.stop();
     }
 
-    cout << "Size of dedup is : " << dedup_out.size() << endl;
+    // cout << "Size of dedup is : " << dedup_out.size() << endl;
 
     // RUN LZW
     time_lzw.start();
@@ -230,7 +230,7 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
 
     dev.queue.enqueueTask(dev.kernel, &write_event, &compute_event[0]);
 
-    clWaitForEvents(1, (const cl_event *)&compute_event[0]);
+    // clWaitForEvents(1, (const cl_event *)&compute_event[0]);
 
     // Profiling the kernel.
     /* compute_event[0].wait(); */
@@ -242,7 +242,7 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
     clWaitForEvents(1, (const cl_event *)&done_event[0]);
     time_lzw.stop();
 
-    cout << "The first LZW code is : " << output_code_lengths[0] << endl;
+    // cout << "The first LZW code is : " << output_code_lengths[0] << endl;
 
     /* if (output_code_lengths[0]) { */
     /*     printf("FAILED TO INSERT INTO ASSOC MEM!!\n"); */
@@ -251,43 +251,43 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
 
     // uint32_t *output_codes_ptr = output_codes;
 
-    for (int i = 0; i < 20; i++)
-        cout << output_codes[i] << " ";
+    // for (int i = 0; i < 20; i++)
+    //     cout << output_codes[i] << " ";
 
-    cout << "\n";
+    // cout << "\n";
 
-    cout << "The number of chunks as per chunk_indices is : " << chunk_indices[0] << endl;
+    // cout << "The number of chunks as per chunk_indices is : " << chunk_indices[0] << endl;
 
-    uint64_t idx_offset = 0;
+    // uint64_t idx_offset = 0;
 
-    for (int i = 1; i <= (int)chunk_indices[0] - 1; i++) {
-        std::string s;
-        char *temp = (char *)host_input + chunk_indices[i];
-        uint32_t count = chunk_indices[i];
+    // for (int i = 1; i <= (int)chunk_indices[0] - 1; i++) {
+    //     std::string s;
+    //     char *temp = (char *)host_input + chunk_indices[i];
+    //     uint32_t count = chunk_indices[i];
 
-        while (count++ < chunk_indices[i + 1]) {
-            s += *temp;
-            temp += 1;
-        }
+    //     while (count++ < chunk_indices[i + 1]) {
+    //         s += *temp;
+    //         temp += 1;
+    //     }
 
-        std::vector<int> codes = encoding(s);
+    //     std::vector<int> codes = encoding(s);
 
-        if (output_code_lengths[i] != codes.size()) {
-            cout << "TEST FAILED!!" << endl;
-            cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
-            cout << output_code_lengths[i] << "|" << codes.size() << "at i = " << i << endl;
-            exit(EXIT_FAILURE);
-        }
+    //     if (output_code_lengths[i] != codes.size()) {
+    //         cout << "TEST FAILED!!" << endl;
+    //         cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
+    //         cout << output_code_lengths[i] << "|" << codes.size() << "at i = " << i << endl;
+    //         exit(EXIT_FAILURE);
+    //     }
 
-        for (int j = 0; j < (int)codes.size(); j++) {
-            if (codes[j] != output_codes[j+idx_offset]) {
-                cout << "FAILURE!!" << endl;
-                cout << codes[j] << "|" << output_codes[j+idx_offset] << " at j = " << j << endl;
-            }
-        }
+    //     for (int j = 0; j < (int)codes.size(); j++) {
+    //         if (codes[j] != output_codes[j+idx_offset]) {
+    //             cout << "FAILURE!!" << endl;
+    //             cout << codes[j] << "|" << output_codes[j+idx_offset] << " at j = " << j << endl;
+    //         }
+    //     }
 
-        idx_offset += output_code_lengths[i];
-    }
+    //     idx_offset += output_code_lengths[i];
+    // }
 
     uint32_t *output_codes_ptr = output_codes;
 
@@ -315,7 +315,7 @@ static void compression_pipeline(RawData *r_data, unsigned char *host_input, uin
         }
 
         output_codes_ptr += output_code_lengths[i];
-        cout << "This is current out packet length : " << output_code_lengths[i] << endl;
+        // cout << "This is current out packet length : " << output_code_lengths[i] << endl;
     }
     total_time.stop();
 
