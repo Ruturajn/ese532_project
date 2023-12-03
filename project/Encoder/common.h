@@ -18,6 +18,7 @@
     (MODULUS - 1) // This is used when performing modulus with MODULUS.
 #define TARGET 0
 #define PRIME 3
+#define PIPELINE_BUFFER_LEN 16384
 
 #define CHECK_MALLOC(ptr, msg)                                                 \
     if (ptr == NULL) {                                                         \
@@ -36,6 +37,8 @@ typedef struct __attribute__((packed)) LZWData {
 } LZWData;
 
 void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect);
+
+void fast_cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect);
 
 string sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx,
                uint32_t chunk_end_idx);

@@ -197,7 +197,7 @@ static void compression_pipeline(
 
     // RUN CDC
     time_cdc.start();
-    cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
+    fast_cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
     time_cdc.stop();
 
     memcpy(host_input, r_data->pipeline_buffer,
@@ -211,7 +211,7 @@ static void compression_pipeline(
         // RUN SHA
         time_sha.start();
         sha_fingerprint =
-            sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
+        sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
         time_sha.stop();
 
         // RUN DEDUP
