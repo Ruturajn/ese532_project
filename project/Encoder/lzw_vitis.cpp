@@ -15,6 +15,8 @@
 #define BUFFER_LEN 16384
 #define MAX_ITERATIONS 20
 #define MAX_OUTPUT_CODE_SIZE 40960
+#define CODE_LENGTH 12
+#define MAX_BIT_PACKET_DATA (MAX_OUTPUT_CODE_SIZE * 4)
 
 typedef enum InfoParams {
     INFO_START_IDX,
@@ -225,7 +227,7 @@ static void compute_lzw(unsigned char *input, uint32_t *lzw_codes,
     unsigned long hash_table[CAPACITY][2];
     assoc_mem my_assoc_mem;
 
-#pragma HLS array_partition variable = hash_table complete dim = 2
+#pragma HLS array_partition variable=hash_table complete dim=2
 
     // make sure the memories are clear
 LOOP1:
@@ -276,30 +278,85 @@ LOOP3:
 
     lzw_codes[j] = prefix_code;
     generic_info[INFO_OUT_PACKET_LENGTH] = (j - offset) + 1;
-    generic_info[INFO_FAILURE] = failure;
+    if (failure)
+        generic_info[INFO_FAILURE] = failure;
+}
+
+void create_packet(const int out_packet_length, uint32_t* out_packet,
+                   unsigned char *data, const int packet_len) {
+
+    uint32_t data_idx = 0;
+    uint16_t current_val = 0;
+    int bits_left = 0;
+    int current_val_bits_left = 0;
+    for (uint32_t i = 0; i < out_packet_length; i++) {
+        current_val = out_packet[i];
+        current_val_bits_left = CODE_LENGTH;
+
+        if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] = (current_val >> 4) & 0xFF;
+            bits_left = 0;
+            current_val_bits_left = 4;
+            data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 4) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x0F) << 4;
+                bits_left = 4;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 8) & 0x0F);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 8;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 8) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val)&0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+    }
+
 }
 
 void lzw(unsigned char input[BUFFER_LEN],
+         unsigned char bit_packed_data[MAX_OUTPUT_CODE_SIZE * 4],
          uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE],
          uint32_t chunk_indices[MAX_ITERATIONS],
-         uint32_t out_packet_lengths[MAX_CHUNK_SIZE]) {
+         uint32_t out_packet_lengths[MAX_ITERATIONS],
+         int32_t dedup_out[MAX_ITERATIONS]) {
 
-#pragma HLS INTERFACE m_axi port = input depth = 16384 bundle = p0
-#pragma HLS INTERFACE m_axi port = lzw_codes depth = 40960 bundle = p1
-#pragma HLS INTERFACE m_axi port = chunk_indices depth = 4096 bundle = p0
-#pragma HLS INTERFACE m_axi port = out_packet_lengths depth = 8192 bundle = p1
+#pragma HLS INTERFACE m_axi port=input depth=16384 bundle=p0
+#pragma HLS INTERFACE m_axi port=bit_packed_data depth=163840 bundle=p1
+#pragma HLS INTERFACE m_axi port=lzw_codes depth=40960 bundle=p0
+#pragma HLS INTERFACE m_axi port=chunk_indices depth=4096 bundle=p0
+#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=8192 bundle=p1
 
     uint32_t temp_lzw_codes[MAX_OUTPUT_CODE_SIZE] = {0};
     uint32_t temp_chunk_indices[MAX_ITERATIONS] = {0};
+    unsigned char temp_input[BUFFER_LEN] = {0};
 
-#pragma HLS array_partition variable = temp_lzw_codes block factor = 5 dim = 1
-#pragma HLS array_partition variable = temp_chunk_indices block factor =       \
-    10 dim = 1
+#pragma HLS array_partition variable=temp_lzw_codes block factor=5 dim=1
+#pragma HLS array_partition variable=temp_chunk_indices block factor=10 dim=1
+#pragma HLS array_partition variable=temp_input block factor=16 dim=1
 
-LOOP4:
-    for (int i = 0; i < MAX_ITERATIONS; i++) {
+    LOOP4: for (int i = 0; i < MAX_ITERATIONS; i++) {
         temp_chunk_indices[i] = chunk_indices[i];
     }
+
+    memcpy(temp_input, input, sizeof(unsigned char) * BUFFER_LEN);
 
     // The first element in the chunk_indices array contains the size
     // of the chunk_indices array.
@@ -316,26 +373,58 @@ LOOP4:
     generic_info[INFO_OUT_PACKET_LENGTH] = 0;
 
     uint64_t offset = 0;
+    uint64_t bit_pack_offset = 0;
 
-LOOP5:
-    for (int i = 1; i <= MAX_ITERATIONS; i++) {
-        // #pragma HLS UNROLL
-        if (i <= (int)chunk_indices_len - 1) {
-            generic_info[INFO_START_IDX] = chunk_indices[i];
-            generic_info[INFO_END_IDX] = chunk_indices[i + 1];
-            compute_lzw(input, temp_lzw_codes, generic_info, offset);
+    const int bound = chunk_indices_len - 1;
+
+    unsigned char data[MAX_OUTPUT_CODE_SIZE * 4] = {0};
+    int packet_len = 0;
+    uint32_t header = 0;
+
+    LOOP5: for (int i = 1; i <= MAX_ITERATIONS; i++) {
+#pragma HLS UNROLL factor=2
+        if (i <= bound) {
+            generic_info[INFO_START_IDX] = temp_chunk_indices[i];
+            generic_info[INFO_END_IDX] = temp_chunk_indices[i + 1];
+            compute_lzw(temp_input, temp_lzw_codes, generic_info, offset);
             out_packet_lengths[i] = generic_info[INFO_OUT_PACKET_LENGTH];
+
+            if (dedup_out[i - 1] == -1) {
+                packet_len = ((out_packet_lengths[i] * 12) / 8);
+                packet_len =
+                    ((out_packet_lengths[i] & 1) != 0) ? packet_len + 1 : packet_len;
+                header = packet_len << 1;
+
+                // 0x00 00 0F 2A
+                data[bit_pack_offset] = (header & 0xFF);
+                data[bit_pack_offset + 1] = ((header >> 8) & 0xFF);
+                data[bit_pack_offset + 2] = ((header >> 16) & 0xFF);
+                data[bit_pack_offset + 3] = ((header >> 24) & 0xFF);
+
+                bit_pack_offset += 4;
+
+                create_packet(out_packet_lengths[i], temp_lzw_codes + offset,
+                              data + bit_pack_offset, packet_len);
+                bit_pack_offset += packet_len;
+
+            } else {
+                header = (dedup_out[i - 1] << 1) | 1;
+
+                data[bit_pack_offset] = (header & 0xFF);
+                data[bit_pack_offset + 1] = ((header >> 8) & 0xFF);
+                data[bit_pack_offset + 2] = ((header >> 16) & 0xFF);
+                data[bit_pack_offset + 3] = ((header >> 24) & 0xFF);
+
+                bit_pack_offset += 4;
+            }
             offset += generic_info[INFO_OUT_PACKET_LENGTH];
         }
     }
 
-    //	LOOP6: for (int i = 0; i < MAX_OUTPUT_CODE_SIZE; i++) {
-    //		lzw_codes[i] = temp_lzw_codes[i];
-    //	}
-
+    memcpy(bit_packed_data, data, MAX_OUTPUT_CODE_SIZE * 4 * sizeof(unsigned char));
     memcpy(lzw_codes, temp_lzw_codes, MAX_OUTPUT_CODE_SIZE * sizeof(uint32_t));
 
     // The first element of the out_packet_lengths is going to signify
     // failure to insert into the associative memory.
-    out_packet_lengths[0] = generic_info[INFO_FAILURE];
+    out_packet_lengths[0] = (bit_pack_offset << 1) | generic_info[INFO_FAILURE];
 }

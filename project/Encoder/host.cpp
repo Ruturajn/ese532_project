@@ -134,41 +134,6 @@ static unsigned char *create_packet(int32_t chunk_idx,
     return data;
 }
 
-// // "Golden" functions to check correctness
-// std::vector<int> encoding(std::string s1) {
-//     // std::cout << "Encoding\n";
-//     std::unordered_map<std::string, int> table;
-//     for (int i = 0; i <= 255; i++) {
-//         std::string ch = "";
-//         ch += char(i);
-//         table[ch] = i;
-//     }
-//
-//     std::string p = "", c = "";
-//     p += s1[0];
-//     int code = 256;
-//     std::vector<int> output_code;
-//     // std::cout << "String\tOutput_Code\tAddition\n";
-//     for (int i = 0; i < s1.length(); i++) {
-//         if (i != s1.length() - 1)
-//             c += s1[i + 1];
-//         if (table.find(p + c) != table.end()) {
-//             p = p + c;
-//         } else {
-//             // std::cout << p << "\t" << table[p] << "\t\t"
-//             //      << p + c << "\t" << code << std::endl;
-//             output_code.push_back(table[p]);
-//             table[p + c] = code;
-//             code++;
-//             p = c;
-//         }
-//         c = "";
-//     }
-//     // std::cout << p << "\t" << table[p] << std::endl;
-//     output_code.push_back(table[p]);
-//     return output_code;
-// }
-
 static void compression_pipeline(
     RawData *r_data, unsigned char *host_input, uint32_t *output_codes,
     uint32_t *chunk_indices, uint32_t *output_code_lengths, CLDevice dev,

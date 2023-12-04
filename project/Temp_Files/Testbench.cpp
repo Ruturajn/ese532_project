@@ -5,6 +5,7 @@
 #include <vector>
 
 #define FILE_SIZE 16383
+#define MAX_LZW_CODES (4096 * 20)
 
 using namespace std;
 
@@ -43,18 +44,75 @@ std::vector<int> encoding(std::string s1) {
     return output_code;
 }
 
+static unsigned char *create_packet_sw(uint32_t out_packet_length,
+                                    uint32_t *out_packet, uint32_t packet_len) {
+    unsigned char *data =
+        (unsigned char *)calloc(packet_len, sizeof(unsigned char));
+    CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
+
+    uint32_t data_idx = 0;
+    uint16_t current_val = 0;
+    int bits_left = 0;
+    int current_val_bits_left = 0;
+
+    for (uint32_t i = 0; i < out_packet_length; i++) {
+        current_val = out_packet[i];
+        current_val_bits_left = CODE_LENGTH;
+
+        if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] = (current_val >> 4) & 0xFF;
+            bits_left = 0;
+            current_val_bits_left = 4;
+            data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 4) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x0F) << 4;
+                bits_left = 4;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 8) & 0x0F);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 8;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 8) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val)&0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+    }
+    return data;
+}
+
 //****************************************************************************************************************
 int main() {
     FILE *fptr = fopen("../../../../Text_Files/Franklin.txt", "r");
     // FILE *fptr = fopen("./ruturajn.tgz", "r");
-    // FILE *fptr = fopen("../Text_Files/LittlePrince.txt", "r");
+    // FILE *fptr = fopen("../../../../Text_Files/LittlePrince.txt", "r");
     // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_c1.JPG", "rb");
     if (fptr == NULL) {
         printf("Unable to open file!\n");
         exit(EXIT_FAILURE);
     }
 
-    size_t file_sz = FILE_SIZE;
+	fseek(fptr, 0, SEEK_END); // seek to end of file
+	size_t file_sz = ftell(fptr); // get current file pointer
+	fseek(fptr, 0, SEEK_SET); // seek back to beginning of file
+
+    file_sz = FILE_SIZE <= file_sz ? FILE_SIZE : file_sz;
 
     unsigned char file_data[16384];
 
@@ -66,43 +124,34 @@ int main() {
     file_data[file_sz] = '\0';
     fclose(fptr);
 
+    uint32_t chunk_indices[20];
     uint32_t lzw_codes[40960];
-    uint8_t failure = 0;
 
-    uint32_t chunk_indices[4096];
+    vector<uint32_t> vect;
 
-    chunk_indices[0] = 19;
-    chunk_indices[1] = 0;
-    chunk_indices[2] = 123;
-    chunk_indices[3] = 601;
-    chunk_indices[4] = 719;
-    chunk_indices[5] = 890;
-    chunk_indices[6] = 1621;
-    chunk_indices[7] = 2434;
-    chunk_indices[8] = 5146;
-    chunk_indices[9] = 6104;
-    chunk_indices[10] = 6321;
-    chunk_indices[11] = 6768;
-    chunk_indices[12] = 7664;
-    chunk_indices[13] = 8310;
-    chunk_indices[14] = 8386;
-    chunk_indices[15] = 9720;
-    chunk_indices[16] = 9953;
-    chunk_indices[17] = 10516;
-    chunk_indices[18] = 10831;
-    chunk_indices[19] = 11341;
+    fast_cdc(file_data, (unsigned int)file_sz, vect);
 
-    uint32_t out_packet_lengths[8192];
+    chunk_indices[0] = vect.size();
 
-    lzw(file_data, lzw_codes, chunk_indices, out_packet_lengths);
+    std::copy(vect.begin(), vect.end(), chunk_indices + 1);
+
+    uint32_t out_packet_lengths[20];
+    int32_t dedup_out[20] = {-1};
+    unsigned char data[40960 * 4] = {0};
+
+    lzw(file_data, data, lzw_codes, chunk_indices, out_packet_lengths, dedup_out);
 
     uint32_t *lzw_codes_ptr = lzw_codes;
 
-	if (out_packet_lengths[0]) {
+	if (out_packet_lengths[0] & 1) {
 		cout << "TEST FAILED!!" << endl;
 		cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
 		exit(EXIT_FAILURE);
 	}
+
+    uint32_t packet_len = 0;
+    uint32_t header = 0;
+    vector<pair<pair<int, int>, unsigned char *>> final_data;
 
     for (int i = 1; i <= chunk_indices[0] - 1; i++) {
         std::string s;
@@ -132,8 +181,57 @@ int main() {
             }
         }
 
+        if (dedup_out[i - 1] == -1) {
+            packet_len = ((out_packet_lengths[i] * 12) / 8);
+            packet_len =
+                (out_packet_lengths[i] % 2 != 0) ? packet_len + 1 : packet_len;
+
+            unsigned char *data_packet =
+                create_packet_sw(out_packet_lengths[i], lzw_codes_ptr, packet_len);
+
+            header = packet_len << 1;
+            // fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
+            final_data.push_back({{header, packet_len}, data_packet});
+
+            // fwrite(data_packet, sizeof(unsigned char), packet_len,
+            // r_data->fptr_write);
+
+            // free(data_packet);
+        } else {
+            header = (dedup_out[i - 1] << 1) | 1;
+            // fwrite(&header, sizeof(uint32_t), 1, r_data->fptr_write);
+            final_data.push_back({{header, -1}, NULL});
+        }
+
         lzw_codes_ptr += out_packet_lengths[i];
     }
+
+    FILE *fptr_write = fopen("../../../../Text_Files/comp.bin", "wb");
+    if (fptr == NULL) {
+        printf("Unable to open file to write contents!\n");
+        exit(EXIT_FAILURE);
+    }
+
+    for (auto it : final_data) {
+        if (it.second != NULL) {
+            fwrite(&it.first.first, sizeof(uint32_t), 1, fptr_write);
+            fwrite(it.second, sizeof(unsigned char), it.first.second,
+                   fptr_write);
+            free(it.second);
+        } else {
+            fwrite(&it.first.first, sizeof(uint32_t), 1, fptr_write);
+        }
+    }
+    fclose(fptr_write);
+
+    FILE *fptr_write_2 = fopen("../../../../Text_Files/comp_gen.bin", "wb");
+    if (fptr == NULL) {
+        printf("Unable to open file to write contents for kernel!\n");
+        exit(EXIT_FAILURE);
+    }
+
+    fwrite(data, sizeof(unsigned char) * (out_packet_lengths[0] >> 1), 1, fptr_write_2);
+    fclose(fptr_write_2);
 
     cout << "TEST PASSED!!" << endl;
     return 0;
