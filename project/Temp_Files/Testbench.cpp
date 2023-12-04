@@ -5,6 +5,7 @@
 #include <vector>
 
 #define FILE_SIZE 16383
+#define MAX_LZW_CODES (4096 * 20)
 
 using namespace std;
 
@@ -45,16 +46,20 @@ std::vector<int> encoding(std::string s1) {
 
 //****************************************************************************************************************
 int main() {
-    FILE *fptr = fopen("../../../../Text_Files/Franklin.txt", "r");
+    // FILE *fptr = fopen("../../../../Text_Files/Franklin.txt", "r");
     // FILE *fptr = fopen("./ruturajn.tgz", "r");
-    // FILE *fptr = fopen("../Text_Files/LittlePrince.txt", "r");
-    // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_c1.JPG", "rb");
+    // FILE *fptr = fopen("../../../../Text_Files/LittlePrince.txt", "r");
+    FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_c1.JPG", "rb");
     if (fptr == NULL) {
         printf("Unable to open file!\n");
         exit(EXIT_FAILURE);
     }
 
-    size_t file_sz = FILE_SIZE;
+	fseek(fptr, 0, SEEK_END); // seek to end of file
+	size_t file_sz = ftell(fptr); // get current file pointer
+	fseek(fptr, 0, SEEK_SET); // seek back to beginning of file
+
+    file_sz = FILE_SIZE <= file_sz ? FILE_SIZE : file_sz;
 
     unsigned char file_data[16384];
 
@@ -66,33 +71,19 @@ int main() {
     file_data[file_sz] = '\0';
     fclose(fptr);
 
-    uint32_t lzw_codes[40960];
-    uint8_t failure = 0;
+    uint32_t lzw_codes[MAX_LZW_CODES];
 
-    uint32_t chunk_indices[4096];
+    uint32_t chunk_indices[20];
 
-    chunk_indices[0] = 19;
-    chunk_indices[1] = 0;
-    chunk_indices[2] = 123;
-    chunk_indices[3] = 601;
-    chunk_indices[4] = 719;
-    chunk_indices[5] = 890;
-    chunk_indices[6] = 1621;
-    chunk_indices[7] = 2434;
-    chunk_indices[8] = 5146;
-    chunk_indices[9] = 6104;
-    chunk_indices[10] = 6321;
-    chunk_indices[11] = 6768;
-    chunk_indices[12] = 7664;
-    chunk_indices[13] = 8310;
-    chunk_indices[14] = 8386;
-    chunk_indices[15] = 9720;
-    chunk_indices[16] = 9953;
-    chunk_indices[17] = 10516;
-    chunk_indices[18] = 10831;
-    chunk_indices[19] = 11341;
+    vector<uint32_t> vect;
 
-    uint32_t out_packet_lengths[8192];
+    fast_cdc(file_data, (unsigned int)file_sz, vect);
+
+    chunk_indices[0] = vect.size();
+
+    std::copy(vect.begin(), vect.end(), chunk_indices + 1);
+
+    uint32_t out_packet_lengths[20];
 
     lzw(file_data, lzw_codes, chunk_indices, out_packet_lengths);
 
@@ -127,12 +118,12 @@ int main() {
         for (int j = 0; j < output_code.size(); j++) {
             if (output_code[j] != lzw_codes_ptr[j]) {
                 cout << "FAILURE!!" << endl;
-                cout << output_code[i] << "|" << lzw_codes_ptr[j]
+                cout << output_code[j] << "|" << lzw_codes_ptr[j]
                      << " at j = " << j << endl;
             }
         }
 
-        lzw_codes_ptr += out_packet_lengths[i];
+        lzw_codes_ptr += 4096;
     }
 
     cout << "TEST PASSED!!" << endl;

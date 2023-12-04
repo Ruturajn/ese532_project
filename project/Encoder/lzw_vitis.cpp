@@ -1,4 +1,3 @@
-#include <hls_stream.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,14 +6,19 @@
 #define CAPACITY                                                               \
     16384 // hash output is 15 bits, and we have 1 entry per bucket, so capacity
           // is 2^15
-#define SEED 524057
+#define CAPACITY_MOD 8191
+#define SEED_MURMUR 524057
+#define SEED_CRAP 75768593
 #define ASSOCIATIVE_MEM_STORE 64
 #define CHUNK_SIZE 4096
 #define MAX_CHUNK_SIZE 8192
 #define INFO_LEN 4
 #define BUFFER_LEN 16384
 #define MAX_ITERATIONS 20
-#define MAX_OUTPUT_CODE_SIZE 40960
+#define MAX_OUTPUT_CODE_SIZE (CHUNK_SIZE * MAX_ITERATIONS)
+
+#define FNV_PRIME 16777619
+#define FNV_OFFSET_BASIS 2166136261U
 
 typedef enum InfoParams {
     INFO_START_IDX,
@@ -50,8 +54,8 @@ static inline uint32_t murmur_32_scramble(uint32_t k) {
     return k;
 }
 
-unsigned int inline my_hash(unsigned long key) {
-    uint32_t h = SEED;
+unsigned int inline murmur_hash(unsigned long key) {
+    uint32_t h = SEED_CRAP;
     uint32_t k = key;
     h ^= murmur_32_scramble(k);
     h = (h << 13) | (h >> 19);
@@ -64,7 +68,64 @@ unsigned int inline my_hash(unsigned long key) {
     h ^= h >> 13;
     h *= 0xc2b2ae35;
     h ^= h >> 16;
-    return h & 0x3FFF;
+    return h;
+}
+
+uint32_t Crap8(unsigned int key) {
+    #define c8fold( a, b, y, z ) { p = (uint32_t)(a) * (uint64_t)(b); y ^= (uint32_t)p; z ^= (uint32_t)(p >> 32); }
+    #define c8mix( in ) { h *= m; c8fold( in, m, k, h ); }
+
+    const uint32_t m = 0x83d2e73b, n = 0x97e1cc59;
+    const uint32_t key4[4] = { ((key) & 0xFF), ((key >> 8) & 0xFF), ((key >> 16) & 0xFF), ((key >> 24) & 0xFF)};
+    uint32_t h = SEED_CRAP, k = n;
+    uint64_t p;
+
+    c8mix(key4[0])
+    c8mix(key4[1])
+    c8mix(key4[2])
+    c8mix( key4[3] & ( ( 1 << ( 2 * 8 ) ) - 1 ) )
+    c8fold( h ^ k, n, k, k )
+    return k;
+}
+
+unsigned int fnv1a_hash(unsigned int key) {
+    uint32_t hash = FNV_OFFSET_BASIS;
+
+    hash ^= ((key >> 24) & 0xFF);
+    hash *= FNV_PRIME;
+
+    hash ^= ((key >> 16) & 0xFF);
+    hash *= FNV_PRIME;
+
+    hash ^= ((key >> 8) & 0xFF);
+    hash *= FNV_PRIME;
+
+    hash ^= ((key) & 0xFF);
+    hash *= FNV_PRIME;
+
+    return hash;
+}
+
+unsigned int djb2_hash(unsigned int key) {
+    unsigned int hash = 5381;
+    int c;
+
+    hash = ((hash << 5) + hash) + ((key >> 24) & 0xFF); // hash * 33 + c
+    hash = ((hash << 5) + hash) + ((key) & 0xFF); // hash * 33 + c
+    hash = ((hash << 5) + hash) + ((key >> 8) & 0xFF); // hash * 33 + c
+    hash = ((hash << 5) + hash) + ((key >> 24) & 0xFF); // hash * 33 + c
+
+    return hash;
+}
+
+unsigned int my_hash(unsigned long key) {
+    unsigned int hash = murmur_hash(~key);
+    // unsigned int hash_2 = djb2_hash(key);
+    // unsigned int hash_3 = Crap8(~(hash_2 << 3));
+    // return ((((hash_2 >> 3) & 0x3F) << 7) | (((hash_3 >> 3) & 0x7) << 4) | ((hash_1) & 0xF));
+    // return ((((hash_2 >> 3) & 0x3F) << 7) |  ((hash_1 >> 7) & 0x7F));
+    // return ((hash_1 + (SEED_CRAP ^ hash_2)) >> 7) & (CAPACITY_MOD);
+    return hash % (CAPACITY - 1);
 }
 
 void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
@@ -218,8 +279,8 @@ void inline lookup(unsigned long (*hash_table)[2], assoc_mem *mem,
     }
 }
 
-static void compute_lzw(unsigned char *input, uint32_t *lzw_codes,
-                        uint32_t generic_info[4], uint64_t offset) {
+static void compute_lzw(unsigned char input[4096], uint32_t lzw_codes[4096],
+                        uint32_t generic_info[4]) {
 
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY][2];
@@ -249,7 +310,7 @@ LOOP2:
     unsigned int prefix_code = (unsigned int)input[start_idx];
     unsigned int code = 0;
     unsigned char next_char = 0;
-    uint64_t j = offset;
+    uint64_t j = 0;
 
 LOOP3:
     for (int i = start_idx; i < end_idx - 1; i++) {
@@ -275,35 +336,39 @@ LOOP3:
     }
 
     lzw_codes[j] = prefix_code;
-    generic_info[INFO_OUT_PACKET_LENGTH] = (j - offset) + 1;
+    generic_info[INFO_OUT_PACKET_LENGTH] = j + 1;
     generic_info[INFO_FAILURE] = failure;
 }
 
 void lzw(unsigned char input[BUFFER_LEN],
          uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE],
          uint32_t chunk_indices[MAX_ITERATIONS],
-         uint32_t out_packet_lengths[MAX_CHUNK_SIZE]) {
+         uint32_t out_packet_lengths[MAX_ITERATIONS]) {
 
-#pragma HLS INTERFACE m_axi port = input depth = 16384 bundle = p0
-#pragma HLS INTERFACE m_axi port = lzw_codes depth = 40960 bundle = p1
-#pragma HLS INTERFACE m_axi port = chunk_indices depth = 4096 bundle = p0
-#pragma HLS INTERFACE m_axi port = out_packet_lengths depth = 8192 bundle = p1
+#pragma HLS INTERFACE m_axi port=input depth=16384 bundle=p0
+#pragma HLS INTERFACE m_axi port=lzw_codes depth=81920 bundle=p1
+#pragma HLS INTERFACE m_axi port=chunk_indices depth=20 bundle=p0
+#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=20 bundle=p1
 
-    uint32_t temp_lzw_codes[MAX_OUTPUT_CODE_SIZE] = {0};
+    uint32_t temp_lzw_codes[MAX_ITERATIONS][CHUNK_SIZE];
     uint32_t temp_chunk_indices[MAX_ITERATIONS] = {0};
+    unsigned char temp_input[MAX_ITERATIONS][CHUNK_SIZE];
 
-#pragma HLS array_partition variable = temp_lzw_codes block factor = 5 dim = 1
-#pragma HLS array_partition variable = temp_chunk_indices block factor =       \
-    10 dim = 1
+#pragma HLS array_partition variable=temp_lzw_codes block factor=5 dim=1
+#pragma HLS array_partition variable=temp_chunk_indices block factor=10 dim=1
+#pragma HLS array_partition variable=temp_input complete dim=1
 
-LOOP4:
-    for (int i = 0; i < MAX_ITERATIONS; i++) {
-        temp_chunk_indices[i] = chunk_indices[i];
-    }
+    memcpy(temp_chunk_indices, chunk_indices, MAX_ITERATIONS * sizeof(uint32_t));
 
     // The first element in the chunk_indices array contains the size
     // of the chunk_indices array.
-    uint32_t chunk_indices_len = chunk_indices[0];
+    uint32_t chunk_indices_len = temp_chunk_indices[0];
+
+    for (int i = 1; i < MAX_ITERATIONS - 1; i++) {
+        if (i <= (int)chunk_indices_len - 1) {
+            memcpy(temp_input[i], input + temp_chunk_indices[i], (temp_chunk_indices[i+1] - temp_chunk_indices[i]) * sizeof(unsigned char));
+        }
+    }
 
     // This is an array that packs generic information for the LZW
     // function. The elements in the this array are as follows:
@@ -317,23 +382,27 @@ LOOP4:
 
     uint64_t offset = 0;
 
-LOOP5:
-    for (int i = 1; i <= MAX_ITERATIONS; i++) {
-        // #pragma HLS UNROLL
-        if (i <= (int)chunk_indices_len - 1) {
-            generic_info[INFO_START_IDX] = chunk_indices[i];
-            generic_info[INFO_END_IDX] = chunk_indices[i + 1];
-            compute_lzw(input, temp_lzw_codes, generic_info, offset);
-            out_packet_lengths[i] = generic_info[INFO_OUT_PACKET_LENGTH];
-            offset += generic_info[INFO_OUT_PACKET_LENGTH];
+    const int loop_bound = (int)chunk_indices_len - 1;
+
+    LOOP5: for (int i = 1; i < MAX_ITERATIONS - 1; i++) {
+#pragma HLS UNROLL factor=2
+        generic_info[INFO_START_IDX] = 0;
+        if (i <= loop_bound) {
+            generic_info[INFO_END_IDX] = temp_chunk_indices[i + 1] - temp_chunk_indices[i];
+        } else {
+            generic_info[INFO_END_IDX] = 1;
         }
+        compute_lzw(temp_input[i], temp_lzw_codes[i-1], generic_info);
+        out_packet_lengths[i] = generic_info[INFO_OUT_PACKET_LENGTH];
     }
 
     //	LOOP6: for (int i = 0; i < MAX_OUTPUT_CODE_SIZE; i++) {
     //		lzw_codes[i] = temp_lzw_codes[i];
     //	}
 
-    memcpy(lzw_codes, temp_lzw_codes, MAX_OUTPUT_CODE_SIZE * sizeof(uint32_t));
+    for (int i = 0; i < MAX_ITERATIONS; i++) {
+        memcpy(lzw_codes + (i * CHUNK_SIZE), temp_lzw_codes[i], CHUNK_SIZE * sizeof(uint32_t));
+    }
 
     // The first element of the out_packet_lengths is going to signify
     // failure to insert into the associative memory.
