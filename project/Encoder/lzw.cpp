@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 //****************************************************************************************************************
-#define CAPACITY                                                                                                       \
+#define CAPACITY                                                               \
     8192 // hash output is 15 bits, and we have 1 entry per bucket, so capacity
          // is 2^15
 // #define CAPACITY 4096
@@ -80,7 +80,8 @@ unsigned int my_hash(unsigned long key) {
 //     //return hashed & 0xFFF;
 // }
 
-void hash_lookup(unsigned long (*hash_table)[2], unsigned int key, bool *hit, unsigned int *result) {
+void hash_lookup(unsigned long (*hash_table)[2], unsigned int key, bool *hit,
+                 unsigned int *result) {
     // std::cout << "hash_lookup():" << std::endl;
     key &= 0xFFFFF; // make sure key is only 20 bits
 
@@ -117,7 +118,8 @@ void hash_lookup(unsigned long (*hash_table)[2], unsigned int key, bool *hit, un
     }
 }
 
-void hash_insert(unsigned long (*hash_table)[2], unsigned int key, unsigned int value, bool *collision) {
+void hash_insert(unsigned long (*hash_table)[2], unsigned int key,
+                 unsigned int value, bool *collision) {
     // std::cout << "hash_insert():" << std::endl;
     key &= 0xFFFFF; // make sure key is only 20 bits
     value &= 0xFFF; // value is only 12 bits
@@ -159,23 +161,27 @@ typedef struct {
     unsigned long lower_key_mem[512];
     unsigned int value[ASSOCIATE_MEM_STORE]; // value store is 64 deep, because
                                              // the lookup mems are 64 bits wide
-    unsigned int fill;                       // tells us how many entries we've currently stored
+    unsigned int fill; // tells us how many entries we've currently stored
 } assoc_mem;
 
 // cast to struct and use ap types to pull out various feilds.
 
-void assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
+void assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value,
+                  bool *collision) {
     // std::cout << "assoc_insert():" << std::endl;
     key &= 0xFFFFF; // make sure key is only 20 bits
     value &= 0xFFF; // value is only 12 bits
 
     if (mem->fill < ASSOCIATE_MEM_STORE) {
-        mem->upper_key_mem[(key >> 18) % 512] |= (1 << mem->fill); // set the fill'th bit to 1, while preserving
-                                                                   // everything else
-        mem->middle_key_mem[(key >> 9) % 512] |= (1 << mem->fill); // set the fill'th bit to 1, while preserving
-                                                                   // everything else
-        mem->lower_key_mem[(key >> 0) % 512] |= (1 << mem->fill);  // set the fill'th bit to 1, while preserving
-                                                                   // everything else
+        mem->upper_key_mem[(key >> 18) % 512] |=
+            (1 << mem->fill); // set the fill'th bit to 1, while preserving
+                              // everything else
+        mem->middle_key_mem[(key >> 9) % 512] |=
+            (1 << mem->fill); // set the fill'th bit to 1, while preserving
+                              // everything else
+        mem->lower_key_mem[(key >> 0) % 512] |=
+            (1 << mem->fill); // set the fill'th bit to 1, while preserving
+                              // everything else
         mem->value[mem->fill] = value;
         mem->fill++;
         *collision = 0;
@@ -187,7 +193,8 @@ void assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value, bool *co
     }
 }
 
-void assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
+void assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit,
+                  unsigned int *result) {
     // std::cout << "assoc_lookup():" << std::endl;
     key &= 0xFFFFF; // make sure key is only 20 bits
 
@@ -214,14 +221,16 @@ void assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit, unsigned int *res
     }
 }
 //****************************************************************************************************************
-void insert(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, unsigned int value, bool *collision) {
+void insert(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key,
+            unsigned int value, bool *collision) {
     hash_insert(hash_table, key, value, collision);
     if (*collision) {
         assoc_insert(mem, key, value, collision);
     }
 }
 
-void lookup(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, bool *hit, unsigned int *result) {
+void lookup(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key,
+            bool *hit, unsigned int *result) {
     hash_lookup(hash_table, key, hit, result);
     if (!*hit) {
         assoc_lookup(mem, key, hit, result);
@@ -306,15 +315,16 @@ void lookup(unsigned long (*hash_table)[2], assoc_mem *mem, unsigned int key, bo
 //     *associative_mem = my_assoc_mem.fill;
 // }
 
-void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *lzw_codes, uint32_t *code_length,
-         uint8_t *failure, unsigned int *associative_mem) {
+void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx,
+         uint32_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
+         unsigned int *associative_mem) {
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY][2];
     assoc_mem my_assoc_mem;
 
     *failure = 0;
 
-// make sure the memories are clear
+    // make sure the memories are clear
     for (int i = 0; i < CAPACITY; i++) {
         hash_table[i][0] = 0;
         hash_table[i][1] = 0;
@@ -326,7 +336,7 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *l
         my_assoc_mem.lower_key_mem[i] = 0;
     }
 
-// init the memories with the first 256 codes
+    // init the memories with the first 256 codes
     for (unsigned long i = 0; i < 256; i++) {
         bool collision = 0;
         unsigned int key = (i << 8) + 0UL; // lower 8 bits are the next char,
@@ -354,7 +364,8 @@ void lzw(unsigned char *chunk, uint32_t start_idx, uint32_t end_idx, uint32_t *l
             lzw_codes[j] = prefix_code;
 
             bool collision = 0;
-            insert(hash_table, &my_assoc_mem, concat_val, next_code, &collision);
+            insert(hash_table, &my_assoc_mem, concat_val, next_code,
+                   &collision);
             if (collision) {
                 printf("FAILED TO INSERT!!\n");
                 *failure = 1;
