@@ -1,4 +1,3 @@
-#include <hls_stream.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -336,13 +335,14 @@ void lzw(unsigned char input[BUFFER_LEN],
          uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE],
          uint32_t chunk_indices[MAX_ITERATIONS],
          uint32_t out_packet_lengths[MAX_ITERATIONS],
-         int32_t dedup_out[MAX_ITERATIONS]) {
+         int64_t dedup_out[MAX_ITERATIONS]) {
 
 #pragma HLS INTERFACE m_axi port=input depth=16384 bundle=p0
 #pragma HLS INTERFACE m_axi port=bit_packed_data depth=163840 bundle=p1
 #pragma HLS INTERFACE m_axi port=lzw_codes depth=40960 bundle=p0
-#pragma HLS INTERFACE m_axi port=chunk_indices depth=4096 bundle=p0
-#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=8192 bundle=p1
+#pragma HLS INTERFACE m_axi port=chunk_indices depth=20 bundle=p0
+#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=20 bundle=p1
+#pragma HLS INTERFACE m_axi port=dedup_out depth=20 bundle=p1
 
     uint32_t temp_lzw_codes[MAX_OUTPUT_CODE_SIZE] = {0};
     uint32_t temp_chunk_indices[MAX_ITERATIONS] = {0};

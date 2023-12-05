@@ -64,5 +64,5 @@ void lzw(unsigned char input[16384],
          uint32_t lzw_codes[40960],
          uint32_t chunk_indices[20],
          uint32_t out_packet_lengths[20],
-         int32_t dedup_out[20]);
+         int64_t dedup_out[20]);
 #endif

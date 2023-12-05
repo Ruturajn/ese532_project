@@ -95,7 +95,7 @@ proj_sha_debug: $(PROJECT_EXE_SHA_DEBUG)
 proj_cdc_debug: $(PROJECT_EXE_CDC_DEBUG)
 
 $(CLIENT_EXE):
-	$(HOST_CXX) -O3 $(CLIENT_SOURCES) -o "$@"
+	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
 	g++ $(PROJECT_SOURCES) -I./Encoder/ -o "$@"

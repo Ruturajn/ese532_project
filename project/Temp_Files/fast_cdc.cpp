@@ -278,14 +278,18 @@ uint64_t GEAR[256] = {
 void fast_cdc(unsigned char *buff, unsigned int buff_size) {
     unsigned int hash = 0;
     unsigned int i = MINSIZE;
+    unsigned int prev = MINSIZE;
 
     cout << "0" << endl;
 
     while (i < buff_size) {
         hash = (hash >> 1) + GEAR[buff[i]];
-        if (((hash & MODULUS_MASK_S) == TARGET) || ((i & MODULUS_MASK) == TARGET)) {
+        // if (((hash & MODULUS_MASK_S) == TARGET) || ((i & MODULUS_MASK) == TARGET)) {
+        if (((hash & MODULUS_MASK_S) == TARGET) || (((i - prev)) == TARGET)) {
             cout << i << endl;
             i += MINSIZE;
+            prev = i;
+            hash = 0;
         }
         i += 1;
     }
