@@ -38,7 +38,8 @@ typedef struct __attribute__((packed)) LZWData {
 
 void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect);
 
-void fast_cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect);
+void fast_cdc(unsigned char *buff, unsigned int buff_size,
+              unsigned int chunk_size, vector<uint32_t> &vect);
 
 string sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx,
                uint32_t chunk_end_idx);

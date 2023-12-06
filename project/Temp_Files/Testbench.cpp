@@ -30,8 +30,8 @@ std::vector<int> encoding(std::string s1) {
         if (table.find(p + c) != table.end()) {
             p = p + c;
         } else {
-            // std::cout << p << "\t" << table[p] << "\t\t"
-            //      << p + c << "\t" << code << std::endl;
+//             std::cout << p << "\t" << table[p] << "\t\t"
+//                  << p + c << "\t" << code << std::endl;
             output_code.push_back(table[p]);
             table[p + c] = code;
             code++;
@@ -45,7 +45,7 @@ std::vector<int> encoding(std::string s1) {
 }
 
 static unsigned char *create_packet_sw(uint32_t out_packet_length,
-                                    uint32_t *out_packet, uint32_t packet_len) {
+                                    vector<int> out_packet, uint32_t packet_len) {
     unsigned char *data =
         (unsigned char *)calloc(packet_len, sizeof(unsigned char));
     CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
@@ -99,11 +99,16 @@ static unsigned char *create_packet_sw(uint32_t out_packet_length,
 
 //****************************************************************************************************************
 int main() {
-    // FILE *fptr = fopen("../../../../Text_Files/Franklin.txt", "r");
+    // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/Franklin.txt", "r");
+    // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/lotr.txt", "r");
+    // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/imaggeee.jpg", "r");
+    // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/IMAGE_390.jpg", "r");
     // FILE *fptr = fopen("./ruturajn.tgz", "r");
-    // FILE *fptr = fopen("../../../../Text_Files/LittlePrince.txt", "r");
-    // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_c1.JPG", "rb");
-    FILE *fptr = fopen("/home1/r/ruturajn/Downloads/FiraCode.zip", "rb");
+    FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/LittlePrince.txt", "r");
+    // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_h5.JPG", "rb");
+	// FILE *fptr = fopen("/home1/r/ruturajn/Downloads/ESE5070_Assignment3_ruturajn-1.pdf", "rb");
+    // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/FiraCode.zip", "rb");
+    // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/encoder.xo", "r");
     if (fptr == NULL) {
         printf("Unable to open file!\n");
         exit(EXIT_FAILURE);
@@ -115,14 +120,14 @@ int main() {
 
     // file_sz = FILE_SIZE <= file_sz ? FILE_SIZE : file_sz;
 
-    FILE *fptr_write_2 = fopen("../../../../Text_Files/comp_gen.bin", "wb");
-    if (fptr == NULL) {
+    FILE *fptr_write_2 = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/comp_gen.bin", "wb");
+    if (fptr_write_2 == NULL) {
         printf("Unable to open file to write contents for kernel!\n");
         exit(EXIT_FAILURE);
     }
 
-    FILE *fptr_write = fopen("../../../../Text_Files/comp.bin", "wb");
-    if (fptr == NULL) {
+    FILE *fptr_write = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/comp.bin", "wb");
+    if (fptr_write == NULL) {
         printf("Unable to open file to write contents!\n");
         exit(EXIT_FAILURE);
     }
@@ -131,6 +136,7 @@ int main() {
     uint32_t chunk_indices[20];
     uint32_t lzw_codes[40960];
     unsigned char data[40960 * 4] = {0};
+    unsigned int count = 0;
 
 	while (file_sz > 0) {
 
@@ -139,15 +145,17 @@ int main() {
         if (file_sz >= 16384 && bytes_read != 16384)
             printf("Unable to read file contents");
 
-        if (file_sz < 16384)
-        	file_data[file_sz] = '\0';
+//        if (file_sz < 16384)
+//        	file_data[file_sz] = '\0';
 
         vector<uint32_t> vect;
 
         if (file_sz < 16384)
-        	fast_cdc(file_data, (unsigned int)file_sz, vect);
+        	fast_cdc(file_data, (unsigned int)file_sz, 4096, vect);
+        	//cdc(file_data, (unsigned int)file_sz, vect);
         else
-        	fast_cdc(file_data, (unsigned int)16384, vect);
+        	fast_cdc(file_data, (unsigned int)16384, 4096, vect);
+        	//cdc(file_data, (unsigned int)16384, vect);
 
         chunk_indices[0] = vect.size();
 
@@ -199,18 +207,18 @@ int main() {
             for (int j = 0; j < output_code.size(); j++) {
                 if (output_code[j] != lzw_codes_ptr[j]) {
                     cout << "FAILURE!!" << endl;
-                    cout << output_code[i] << "|" << lzw_codes_ptr[j]
-                         << " at j = " << j << endl;
+                    cout << output_code[j] << "|" << lzw_codes_ptr[j]
+                         << " at j = " << j << " and i = " << i << endl;
                 }
             }
 
             if (dedup_out[i - 1] == -1) {
-                packet_len = ((out_packet_lengths[i] * 12) / 8);
+                packet_len = ((output_code.size() * 12) / 8);
                 packet_len =
-                    (out_packet_lengths[i] % 2 != 0) ? packet_len + 1 : packet_len;
+                    (output_code.size() % 2 != 0) ? packet_len + 1 : packet_len;
 
                 unsigned char *data_packet =
-                    create_packet_sw(out_packet_lengths[i], lzw_codes_ptr, packet_len);
+                    create_packet_sw(output_code.size(), output_code, packet_len);
 
                 header = packet_len << 1;
                 final_data.push_back({{header, packet_len}, data_packet});
@@ -237,6 +245,9 @@ int main() {
         fwrite(data, sizeof(unsigned char) * (out_packet_lengths[0] >> 1), 1, fptr_write_2);
 
         file_sz -= 16384;
+
+        cout << "Iteration : " << count << endl;
+        count++;
 	}
 
     fclose(fptr);

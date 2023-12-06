@@ -275,17 +275,20 @@ uint64_t GEAR[256] = {
     854125182,
 };
 
-void fast_cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
+void fast_cdc(unsigned char *buff, unsigned int buff_size,
+              unsigned int chunk_size, vector<uint32_t> &vect) {
     unsigned int hash = 0;
     unsigned int i = MINSIZE;
     unsigned int prev = 0;
 
+
     // cout << "0" << endl;
     vect.push_back(0);
+    unsigned int modulus_mask_s = (chunk_size * 2) - 1;
 
     while (i < buff_size) {
         hash = (hash >> 1) + GEAR[buff[i]];
-        if (((hash & MODULUS_MASK_S) == TARGET) || (((i - prev)) == CHUNK_SIZE)) {
+        if (((hash & modulus_mask_s) == TARGET) || (((i - prev)) == chunk_size)) {
             vect.push_back(i);
             prev = i;
             i += MINSIZE;
@@ -295,7 +298,7 @@ void fast_cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vec
     }
 
     // cout << buff_size << endl;
-    if (vect[vect.size() - 1] == buff_size)
+    if (vect[vect.size() - 1] != buff_size)
         vect.push_back(buff_size);
 }
 

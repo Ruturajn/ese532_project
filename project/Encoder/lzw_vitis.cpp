@@ -16,6 +16,11 @@
 #define MAX_OUTPUT_CODE_SIZE 40960
 #define CODE_LENGTH 12
 #define MAX_BIT_PACKET_DATA (MAX_OUTPUT_CODE_SIZE * 4)
+#define SEED_MURMUR 524057
+#define SEED_CRAP 75768593
+
+#define FNV_PRIME 16777619
+#define FNV_OFFSET_BASIS 2166136261U
 
 typedef enum InfoParams {
     INFO_START_IDX,
@@ -51,9 +56,10 @@ static inline uint32_t murmur_32_scramble(uint32_t k) {
     return k;
 }
 
-unsigned int inline my_hash(unsigned long key) {
+unsigned int inline murmur_hash(unsigned long key) {
     uint32_t h = SEED;
     uint32_t k = key;
+
     h ^= murmur_32_scramble(k);
     h = (h << 13) | (h >> 19);
     h = h * 5 + 0xe6546b64;
@@ -65,7 +71,65 @@ unsigned int inline my_hash(unsigned long key) {
     h ^= h >> 13;
     h *= 0xc2b2ae35;
     h ^= h >> 16;
-    return h & 0x3FFF;
+    return h;
+}
+
+uint32_t inline Crap8(unsigned int key) {
+    #define c8fold( a, b, y, z ) { p = (uint32_t)(a) * (uint64_t)(b); y ^= (uint32_t)p; z ^= (uint32_t)(p >> 32); }
+    #define c8mix( in ) { h *= m; c8fold( in, m, k, h ); }
+
+    const uint32_t m = 0x83d2e73b, n = 0x97e1cc59;
+    const uint32_t key4[4] = { ((key) & 0xFF), ((key >> 8) & 0xFF), ((key >> 16) & 0xFF), ((key >> 24) & 0xFF)};
+    uint32_t h = SEED_CRAP, k = n;
+    uint64_t p;
+
+    c8mix(key4[0])
+    c8mix(key4[1])
+    c8mix(key4[2])
+    c8mix( key4[3] & ( ( 1 << ( 2 * 8 ) ) - 1 ) )
+    c8fold( h ^ k, n, k, k )
+    return k;
+}
+
+unsigned int fnv1a_hash(unsigned int key) {
+    uint32_t hash = FNV_OFFSET_BASIS;
+
+    hash ^= ((key >> 24) & 0xFF);
+    hash *= FNV_PRIME;
+
+    hash ^= ((key >> 16) & 0xFF);
+    hash *= FNV_PRIME;
+
+    hash ^= ((key >> 8) & 0xFF);
+    hash *= FNV_PRIME;
+
+    hash ^= ((key) & 0xFF);
+    hash *= FNV_PRIME;
+
+    return hash;
+}
+
+unsigned int djb2_hash(unsigned int key) {
+    unsigned int hash = 5381;
+    int c;
+
+    hash = ((hash << 5) + hash) + ((key >> 24) & 0xFF); // hash * 33 + c
+    hash = ((hash << 5) + hash) + ((key) & 0xFF); // hash * 33 + c
+    hash = ((hash << 5) + hash) + ((key >> 8) & 0xFF); // hash * 33 + c
+    hash = ((hash << 5) + hash) + ((key >> 24) & 0xFF); // hash * 33 + c
+
+    return hash;
+}
+
+unsigned int my_hash(unsigned long key) {
+    unsigned int hash_1 = murmur_hash(~key);
+    // unsigned int hash_2 = Crap8(hash_1);
+    // unsigned int hash_1 = djb2_hash(~(key));
+    // unsigned int hash_2 = fnv1a_hash(key);
+    // return ((((hash_2 >> 3) & 0x3F) << 7) | (((hash_3 >> 5) & 0x7) << 4) | ((hash_1 >> 7) & 0xF));
+    // return ((((hash_2 >> 3) & 0x7F) << 7) |  ((hash_1 >> 7) & 0x7F));
+    // return ((hash_1 + (SEED_CRAP ^ hash_2)) >> 7) & (CAPACITY_MOD);
+    return hash_1 & (CAPACITY - 1);
 }
 
 void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
@@ -256,13 +320,13 @@ LOOP3:
     for (int i = start_idx; i < end_idx - 1; i++) {
         next_char = input[i + 1];
         bool hit = 0;
-        lookup(hash_table, &my_assoc_mem, (prefix_code << 8) + next_char, &hit,
+        lookup(hash_table, &my_assoc_mem, ((prefix_code << 8) + next_char), &hit,
                &code);
         if (!hit) {
             lzw_codes[j] = prefix_code;
 
             bool collision = 0;
-            insert(hash_table, &my_assoc_mem, (prefix_code << 8) + next_char,
+            insert(hash_table, &my_assoc_mem, ((prefix_code << 8) + next_char),
                    next_code, &collision);
             if (collision) {
                 failure = 1;

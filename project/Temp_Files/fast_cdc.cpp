@@ -7,10 +7,11 @@
 
 using namespace std;
 
-#define CHUNK_SIZE 4096
-#define MODULUS_MASK (CHUNK_SIZE - 1)
-#define MODULUS_MASK_S ((CHUNK_SIZE * 2) - 1)
-#define MODULUS_MASK_L ((CHUNK_SIZE / 2) - 1)
+#define MAXSIZE 4096
+#define AVGSIZE 2048
+#define MODULUS_MASK_A (AVGSIZE - 1)
+#define MODULUS_MASK_S ((AVGSIZE * 4) - 1)
+#define MODULUS_MASK_L ((AVGSIZE / 4) - 1)
 #define TARGET 0
 #define BITS 12
 #define MINSIZE 1024
@@ -275,26 +276,56 @@ uint64_t GEAR[256] = {
     854125182,
 };
 
-void fast_cdc(unsigned char *buff, unsigned int buff_size) {
+unsigned int chunk_gen(unsigned char *buff, unsigned int buff_size) {
     unsigned int hash = 0;
     unsigned int i = MINSIZE;
-    unsigned int prev = MINSIZE;
+    unsigned int barrier = AVGSIZE;
 
-    cout << "0" << endl;
+    if (buff_size <= MINSIZE)
+        return buff_size;
+
+    if (buff_size >= MAXSIZE)
+        buff_size = MAXSIZE;
+
+    else if (buff_size <= AVGSIZE)
+        barrier = buff_size;
+
+    while (i < barrier) {
+        hash = (hash >> 1) + GEAR[buff[i]];
+        if (!(hash & MODULUS_MASK_S))
+            return i;
+        i++;
+    }
 
     while (i < buff_size) {
         hash = (hash >> 1) + GEAR[buff[i]];
-        // if (((hash & MODULUS_MASK_S) == TARGET) || ((i & MODULUS_MASK) == TARGET)) {
-        if (((hash & MODULUS_MASK_S) == TARGET) || (((i - prev)) == TARGET)) {
-            cout << i << endl;
-            i += MINSIZE;
-            prev = i;
-            hash = 0;
-        }
-        i += 1;
+        if (!(hash & MODULUS_MASK_L))
+            return i;
+        i++;
     }
 
-    cout << buff_size << endl;
+    return i;
+}
+
+void fast_cdc(unsigned char *buff, unsigned int buff_size) {
+    unsigned int chunk_idx = 0;
+    unsigned int i = 0;
+    unsigned char *temp = buff;
+
+    cout << "0" << endl;
+    unsigned int temp_size = buff_size;
+
+    while (i < buff_size) {
+        chunk_idx = chunk_gen(temp, temp_size);
+        i += chunk_idx;
+        cout << i << endl;
+        temp += i;
+        temp_size = buff_size - i;
+    }
+
+    // cout << buff_size << endl;
+    /* if (prev != buff_size) */
+    /*     cout << buff_size << endl; */
 }
 
 void test_cdc( const char* file )

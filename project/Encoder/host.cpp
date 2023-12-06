@@ -55,11 +55,11 @@ typedef struct CLDevice {
 } CLDevice;
 
 void handle_input(int argc, char *argv[], int *blocksize, char **filename,
-                  char **kernel_name) {
+                  char **kernel_name, unsigned int *chunk_size) {
     int x;
     extern char *optarg;
 
-    while ((x = getopt(argc, argv, ":b:f:k:")) != -1) {
+    while ((x = getopt(argc, argv, ":b:f:k:c:")) != -1) {
         switch (x) {
         case 'k':
             *kernel_name = optarg;
@@ -68,6 +68,10 @@ void handle_input(int argc, char *argv[], int *blocksize, char **filename,
         case 'b':
             *blocksize = atoi(optarg);
             printf("blocksize is set to %d optarg\n", *blocksize);
+            break;
+        case 'c':
+            *chunk_size = atoi(optarg);
+            printf("Chunk size is set to %d optarg\n", *chunk_size);
             break;
         case 'f':
             *filename = optarg;
@@ -140,7 +144,8 @@ static void compression_pipeline(
     cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
     cl::Buffer chunk_indices_buffer, cl::Buffer out_packet_lengths_buffer,
     int64_t* dedup_out_data, cl::Buffer dedup_out_buffer,
-    unsigned char *bit_packed_data, cl::Buffer bit_packed_data_buffer) {
+    unsigned char *bit_packed_data, cl::Buffer bit_packed_data_buffer,
+    unsigned int chunk_size) {
 
     vector<uint32_t> vect;
     string sha_fingerprint;
@@ -158,7 +163,7 @@ static void compression_pipeline(
     std::vector<cl::Event> compute_event(1);
     std::vector<cl::Event> done_event(1);
 
-    double total_time_2 = 0;
+    // double total_time_2 = 0;
 
     memcpy(host_input, r_data->pipeline_buffer,
            sizeof(unsigned char) * r_data->length_sum);
@@ -167,7 +172,7 @@ static void compression_pipeline(
 
     // RUN CDC
     time_cdc.start();
-    fast_cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
+    fast_cdc(r_data->pipeline_buffer, r_data->length_sum, chunk_size, vect);
     // cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
     time_cdc.stop();
 
@@ -265,8 +270,8 @@ static void compression_pipeline(
     //     }
     // }
 
-    cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2
-         << " ms." << endl;
+    /* cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2 */
+    /*      << " ms." << endl; */
 }
 
 int main(int argc, char *argv[]) {
@@ -283,9 +288,10 @@ int main(int argc, char *argv[]) {
     int blocksize = BLOCKSIZE;
     char *file = strdup("compressed_file.bin");
     char *kernel_name = strdup("lzw.xclbin");
+    int chunk_size = CHUNK_SIZE;
 
     // set blocksize if decalred through command line
-    handle_input(argc, argv, &blocksize, &file, &kernel_name);
+    handle_input(argc, argv, &blocksize, &file, &kernel_name, &chunk_size);
 
     RawData *r_data = (RawData *)calloc(1, sizeof(RawData));
     CHECK_MALLOC(r_data, "Unable to allocate memory for raw data");
@@ -326,8 +332,7 @@ int main(int argc, char *argv[]) {
     cl::Program program(context, devices, bins, NULL, &err);
     CLDevice dev;
     dev.queue = cl::CommandQueue(context, device,
-                                 CL_QUEUE_PROFILING_ENABLE |
-                                     CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
+                                 CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
                                  &err);
     dev.kernel = cl::Kernel(program, "lzw", &err);
 
@@ -411,7 +416,7 @@ int main(int argc, char *argv[]) {
                 output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
                 chunk_indices_buffer, out_packet_lengths_buffer,
                 dedup_out_data, dedup_out_buffer,
-                bit_packed_data, bit_packed_data_buffer);
+                bit_packed_data, bit_packed_data_buffer, chunk_size);
             compression_timer.stop();
             writer = 0;
             r_data->length_sum = 0;
