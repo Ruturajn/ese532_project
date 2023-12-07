@@ -1,6 +1,7 @@
 /project/.ipcache/*
 /project/final_project/*
 /project/Encoder/*.o
+/project/Decoder/*.o
 /project/Encoder/sha256/*.o
 /project/Server/*.o
 /project/_x/*
@@ -17,3 +18,7 @@
 /project/*.package_summary
 /project/*.log
 /project/encoder
+/project/decoder
+/project/Temp_Files/*.bin
+/project/Text_Files/*.bin
+/project/Text_Files/decoder_13

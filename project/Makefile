@@ -61,12 +61,12 @@ CLIENT_EXE = client
 #
 # host files
 #
-HOST_SOURCES = Encoder/cdc.cpp Encoder/sha.cpp Encoder/dedup.cpp Encoder/lzw.cpp Encoder/host.cpp Server/server.cpp Encoder/sha256/sha256.cpp Encoder/Utilities.cpp Encoder/fast_cdc.cpp
+HOST_SOURCES = Encoder/cdc.cpp Encoder/sha.cpp Encoder/dedup.cpp Encoder/lzw.cpp Encoder/thread_host.cpp Server/server.cpp Encoder/sha256/sha256.cpp Encoder/Utilities.cpp Encoder/fast_cdc.cpp
 HOST_OBJECTS=$(HOST_SOURCES:.cpp=.o)
 HOST_EXE = encoder
 
 $(HOST_EXE): $(HOST_OBJECTS)
-	$(HOST_CXX) -I./Encoder/ -o "$@" $(+) $(LDFLAGS)
+	$(HOST_CXX) -I./Encoder/ -o -pthread "$@" $(+) $(LDFLAGS)
 
 SERVER_SOURCES = Server/encoder.cpp Server/server.cpp
 SERVER_OBJECTS =$(SERVER_SOURCES:.cpp=.o)

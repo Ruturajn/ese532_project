@@ -18,6 +18,7 @@
 #include <vector>
 #include <thread>
 #include <condition_variable>
+#include <mutex>
 
 #define NUM_PACKETS 2
 #define pipe_depth 4
@@ -40,6 +41,12 @@ stopwatch time_lzw;
 stopwatch time_sha;
 stopwatch time_dedup;
 stopwatch total_time;
+
+std::mutex m;
+std::condition_variable cv;
+bool ready = false;
+bool processed = false;
+unsigned int chunk_size = CHUNK_SIZE;
 
 typedef struct __attribute__((packed)) RawData {
     int length_sum;                 /// The total length of the input buffer.
@@ -146,134 +153,144 @@ static void compression_pipeline(
     cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
     cl::Buffer chunk_indices_buffer, cl::Buffer out_packet_lengths_buffer,
     int64_t* dedup_out_data, cl::Buffer dedup_out_buffer,
-    unsigned char *bit_packed_data, cl::Buffer bit_packed_data_buffer,
-    unsigned int chunk_size) {
+    unsigned char *bit_packed_data, cl::Buffer bit_packed_data_buffer) {
 
-    vector<uint32_t> vect;
-    string sha_fingerprint;
-    int64_t chunk_idx = 0;
-    // uint32_t packet_len = 0;
-    // uint32_t header = 0;
-    vector<int64_t> dedup_out;
-    vector<pair<pair<int, int>, unsigned char *>> final_data;
+    while (true) {
 
-    // ------------------------------------------------------------------------------------
-    // Step 3: Run the kernel
-    // ------------------------------------------------------------------------------------
+        std::unique_lock lk(m);
+        cv.wait(lk, []{ return ready; });
 
-    std::vector<cl::Event> write_event(1);
-    std::vector<cl::Event> compute_event(1);
-    std::vector<cl::Event> done_event(1);
+        vector<uint32_t> vect;
+        string sha_fingerprint;
+        int64_t chunk_idx = 0;
+        // uint32_t packet_len = 0;
+        // uint32_t header = 0;
+        vector<int64_t> dedup_out;
+        vector<pair<pair<int, int>, unsigned char *>> final_data;
 
-    // double total_time_2 = 0;
+        // ------------------------------------------------------------------------------------
+        // Step 3: Run the kernel
+        // ------------------------------------------------------------------------------------
 
-    memcpy(host_input, r_data->pipeline_buffer,
-           sizeof(unsigned char) * r_data->length_sum);
+        std::vector<cl::Event> write_event(1);
+        std::vector<cl::Event> compute_event(1);
+        std::vector<cl::Event> done_event(1);
 
-    total_time.start();
+        // double total_time_2 = 0;
 
-    // RUN CDC
-    time_cdc.start();
-    fast_cdc(r_data->pipeline_buffer, r_data->length_sum, chunk_size, vect);
-    // cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
-    time_cdc.stop();
+        memcpy(host_input, collected_data,
+               sizeof(unsigned char) * r_data->length_sum);
 
-    chunk_indices[0] = vect.size();
+        total_time.start();
 
-    std::copy(vect.begin(), vect.end(), chunk_indices + 1);
+        // RUN CDC
+        time_cdc.start();
+        fast_cdc(collected_data, r_data->length_sum, chunk_size, vect);
+        // cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
+        time_cdc.stop();
 
-    for (int i = 0; i < (int)(vect.size() - 1); i++) {
-        // RUN SHA
-        time_sha.start();
-        sha_fingerprint =
-        sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
-        time_sha.stop();
+        chunk_indices[0] = vect.size();
 
-        // RUN DEDUP
-        time_dedup.start();
-        chunk_idx = dedup(sha_fingerprint);
-        dedup_out.push_back(chunk_idx);
-        time_dedup.stop();
+        std::copy(vect.begin(), vect.end(), chunk_indices + 1);
+
+        for (int i = 0; i < (int)(vect.size() - 1); i++) {
+            // RUN SHA
+            time_sha.start();
+            sha_fingerprint =
+            sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
+            time_sha.stop();
+
+            // RUN DEDUP
+            time_dedup.start();
+            chunk_idx = dedup(sha_fingerprint);
+            dedup_out.push_back(chunk_idx);
+            time_dedup.stop();
+        }
+
+        // RUN LZW
+        time_lzw.start();
+
+        std::copy(dedup_out.begin(), dedup_out.end(), dedup_out_data);
+
+        dev.kernel.setArg(0, lzw_input_buffer);
+        dev.kernel.setArg(1, bit_packed_data_buffer);
+        dev.kernel.setArg(2, lzw_output_buffer);
+        dev.kernel.setArg(3, chunk_indices_buffer);
+        dev.kernel.setArg(4, out_packet_lengths_buffer);
+        dev.kernel.setArg(5, dedup_out_buffer);
+
+        dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer, dedup_out_buffer},
+                                           0 /* 0 means from host*/, NULL,
+                                           &write_event[0]);
+
+        dev.queue.enqueueTask(dev.kernel, &write_event, &compute_event[0]);
+
+        // Profiling the kernel.
+        /* compute_event[0].wait(); */
+        /* total_time_2 +=
+         * compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() - */
+        /* compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>(); */
+
+        dev.queue.enqueueMigrateMemObjects(
+            {bit_packed_data_buffer, lzw_output_buffer, out_packet_lengths_buffer},
+            CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
+        clWaitForEvents(1, (const cl_event *)&done_event[0]);
+        time_lzw.stop();
+
+        if (output_code_lengths[0] & 0x1) {
+            printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
+            exit(EXIT_FAILURE);
+        }
+
+        // uint32_t *output_codes_ptr = output_codes;
+
+        // for (int i = 1; i < (int)chunk_indices[0]; i++) {
+        //     if (dedup_out[i - 1] == -1) {
+        //         packet_len = ((output_code_lengths[i] * 12) / 8);
+        //         packet_len =
+        //             (output_code_lengths[i] % 2 != 0) ? packet_len + 1 : packet_len;
+
+        //         unsigned char *data_packet =
+        //             create_packet(chunk_idx, output_code_lengths[i],
+        //                           output_codes_ptr, packet_len);
+
+        //         header = packet_len << 1;
+        //         final_data.push_back({{header, packet_len}, data_packet});
+        //         lzw_bytes += 4;
+
+        //         lzw_bytes += packet_len;
+
+        //     } else {
+        //         header = (dedup_out[i - 1] << 1) | 1;
+        //         final_data.push_back({{header, -1}, NULL});
+        //         dedup_bytes += 4;
+        //     }
+
+        //     output_codes_ptr += output_code_lengths[i];
+        // }
+        total_time.stop();
+
+        fwrite(bit_packed_data, sizeof(unsigned char) * (output_code_lengths[0] >> 1), 1, r_data->fptr_write);
+
+        // for (auto it : final_data) {
+        //     if (it.second != NULL) {
+        //         fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
+        //         fwrite(it.second, sizeof(unsigned char), it.first.second,
+        //                r_data->fptr_write);
+        //         free(it.second);
+        //     } else {
+        //         fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
+        //     }
+        // }
+
+        /* cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2 */
+        /*      << " ms." << endl; */
+
+
+        processed = true;
+        lk.unlock();
+        cv.notify_one();
     }
-
-    // RUN LZW
-    time_lzw.start();
-
-    std::copy(dedup_out.begin(), dedup_out.end(), dedup_out_data);
-
-    dev.kernel.setArg(0, lzw_input_buffer);
-    dev.kernel.setArg(1, bit_packed_data_buffer);
-    dev.kernel.setArg(2, lzw_output_buffer);
-    dev.kernel.setArg(3, chunk_indices_buffer);
-    dev.kernel.setArg(4, out_packet_lengths_buffer);
-    dev.kernel.setArg(5, dedup_out_buffer);
-
-    dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer, dedup_out_buffer},
-                                       0 /* 0 means from host*/, NULL,
-                                       &write_event[0]);
-
-    dev.queue.enqueueTask(dev.kernel, &write_event, &compute_event[0]);
-
-    // Profiling the kernel.
-    /* compute_event[0].wait(); */
-    /* total_time_2 +=
-     * compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_END>() - */
-    /* compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>(); */
-
-    dev.queue.enqueueMigrateMemObjects(
-        {bit_packed_data_buffer, lzw_output_buffer, out_packet_lengths_buffer},
-        CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
-    clWaitForEvents(1, (const cl_event *)&done_event[0]);
-    time_lzw.stop();
-
-    if (output_code_lengths[0] & 0x1) {
-        printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // uint32_t *output_codes_ptr = output_codes;
-
-    // for (int i = 1; i < (int)chunk_indices[0]; i++) {
-    //     if (dedup_out[i - 1] == -1) {
-    //         packet_len = ((output_code_lengths[i] * 12) / 8);
-    //         packet_len =
-    //             (output_code_lengths[i] % 2 != 0) ? packet_len + 1 : packet_len;
-
-    //         unsigned char *data_packet =
-    //             create_packet(chunk_idx, output_code_lengths[i],
-    //                           output_codes_ptr, packet_len);
-
-    //         header = packet_len << 1;
-    //         final_data.push_back({{header, packet_len}, data_packet});
-    //         lzw_bytes += 4;
-
-    //         lzw_bytes += packet_len;
-
-    //     } else {
-    //         header = (dedup_out[i - 1] << 1) | 1;
-    //         final_data.push_back({{header, -1}, NULL});
-    //         dedup_bytes += 4;
-    //     }
-
-    //     output_codes_ptr += output_code_lengths[i];
-    // }
-    total_time.stop();
-
-    fwrite(bit_packed_data, sizeof(unsigned char) * (output_code_lengths[0] >> 1), 1, r_data->fptr_write);
-
-    // for (auto it : final_data) {
-    //     if (it.second != NULL) {
-    //         fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
-    //         fwrite(it.second, sizeof(unsigned char), it.first.second,
-    //                r_data->fptr_write);
-    //         free(it.second);
-    //     } else {
-    //         fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
-    //     }
-    // }
-
-    /* cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2 */
-    /*      << " ms." << endl; */
 }
 
 int main(int argc, char *argv[]) {
@@ -290,7 +307,6 @@ int main(int argc, char *argv[]) {
     int blocksize = BLOCKSIZE;
     char *file = strdup("compressed_file.bin");
     char *kernel_name = strdup("lzw.xclbin");
-    unsigned int chunk_size = CHUNK_SIZE;
 
     // set blocksize if decalred through command line
     handle_input(argc, argv, &blocksize, &file, &kernel_name, &chunk_size);
@@ -307,6 +323,11 @@ int main(int argc, char *argv[]) {
     r_data->pipeline_buffer =
         (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
     CHECK_MALLOC(r_data->pipeline_buffer,
+                 "Unable to allocate memory for pipeline buffer");
+
+    unsigned char *collected_data =
+        (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
+    CHECK_MALLOC(collected_data,
                  "Unable to allocate memory for pipeline buffer");
 
     for (int i = 0; i < (NUM_PACKETS); i++) {
@@ -384,6 +405,15 @@ int main(int argc, char *argv[]) {
         bit_packed_data_buffer, CL_TRUE, CL_MAP_READ, 0,
         sizeof(unsigned char) * MAX_OUTPUT_BUF_SIZE * 4);
 
+    std::thread worker(&compression_pipeline,
+        r_data, host_input, output_codes, chunk_indices,
+        output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
+        chunk_indices_buffer, out_packet_lengths_buffer,
+        dedup_out_data, dedup_out_buffer,
+        bit_packed_data, bit_packed_data_buffer);
+
+    pin_thread_to_cpu(worker, 2);
+
     // Loop until last message
     while (!done) {
 
@@ -412,14 +442,30 @@ int main(int argc, char *argv[]) {
 
         if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) ||
             done == 1) {
-            compression_timer.start();
-            compression_pipeline(
-                r_data, host_input, output_codes, chunk_indices,
-                output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
-                chunk_indices_buffer, out_packet_lengths_buffer,
-                dedup_out_data, dedup_out_buffer,
-                bit_packed_data, bit_packed_data_buffer, chunk_size);
-            compression_timer.stop();
+            // Wait for the workder.
+            {
+                std::unique_lock lk(m);
+                cv.wait(lk, []{ return processed; });
+                cout << "Waiting for the worker!!" << endl;
+            }
+
+            // Send data to the worker.
+            {
+                std::lock_guard lk(m);
+                ready = true;
+                memcpy(collected_data, r_data->pipeline_buffer, r_data->length_sum);
+                cout << "Sending data to the worker!!" << endl;
+            }
+            cv.notify_one();
+            // compression_timer.start();
+            // compression_pipeline(
+            //     r_data, host_input, output_codes, chunk_indices,
+            //     output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
+            //     chunk_indices_buffer, out_packet_lengths_buffer,
+            //     dedup_out_data, dedup_out_buffer,
+            //     bit_packed_data, bit_packed_data_buffer, chunk_size);
+            // compression_timer.stop();
+            }
             writer = 0;
             r_data->length_sum = 0;
         } else
@@ -439,6 +485,9 @@ int main(int argc, char *argv[]) {
 
     free(r_data->pipeline_buffer);
     free(r_data);
+    free(collected_data);
+
+    worker.join();
 
     // Print Latencies
     cout << "--------------- Total Latencies ---------------" << endl;

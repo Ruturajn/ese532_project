@@ -138,7 +138,7 @@ unsigned int my_hash(unsigned long key) {
 //------------
 //        3583
 void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
-                        bool *hit, unsigned int *result, bool *is_exists) {
+                        bool *hit, unsigned int *result) {
     key &= 0x1FFFFF; // make sure key is only 21 bits
 
     unsigned int hash_val = my_hash(key);
@@ -158,13 +158,13 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
     if (valid && (key == stored_key)) {
         *hit = 1;
         *result = value;
-        *is_exists = 1;
+        //*is_exists = 1;
         return;
     }
 
     lookup = hash_table[hash_val][1];
 
-    *is_exists = (lookup && 1);
+    //*is_exists = (lookup && 1);
 
 //    if (lookup == 0) {
 //    	*is_exists = 0;
@@ -178,12 +178,12 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
     if (valid && (key == stored_key)) {
         *hit = 1;
         *result = value;
-        *is_exists = 1;
+        //*is_exists = 1;
         return;
     }
     *hit = 0;
     *result = 0;
-    *is_exists = (lookup && 1);
+    //*is_exists = (lookup && 1);
 }
 
 void inline hash_insert(unsigned long (*hash_table)[2], unsigned int key,
@@ -297,9 +297,9 @@ void inline insert(unsigned long (*hash_table)[2], assoc_mem *mem,
 
 void inline lookup(unsigned long (*hash_table)[2], assoc_mem *mem,
                    unsigned int key, bool *hit, unsigned int *result) {
-	bool is_exists = 0;
-    hash_lookup(hash_table, key, hit, result, &is_exists);
-    if (!*hit && is_exists) {
+	//bool is_exists = 0;
+    hash_lookup(hash_table, key, hit, result);
+    if (!*hit) {
         assoc_lookup(mem, key, hit, result);
     }
 }
@@ -667,7 +667,7 @@ void lzw(unsigned char input[BUFFER_LEN],
             if (dedup_out[i - 1] == -1) {
                 packet_len = ((out_packet_lengths[i] * CODE_LENGTH) / 8);
                 packet_len =
-                    ((out_packet_lengths[i] % 13) != 0) ? packet_len + 1 : packet_len;
+                    ((out_packet_lengths[i] & 0x7) != 0) ? packet_len + 1 : packet_len;
                 header = packet_len << 1;
 
                 // 0x00 00 0F 2A

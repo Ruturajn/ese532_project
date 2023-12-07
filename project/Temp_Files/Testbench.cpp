@@ -300,11 +300,11 @@ int main() {
     // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/imaggeee.jpg", "r");
     // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/IMAGE_390.jpg", "r");
     // FILE *fptr = fopen("./ruturajn.tgz", "r");
-    // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/LittlePrince.txt", "r");
+    FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/LittlePrince.txt", "r");
     // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/Text_Files/small_prince.txt", "r");
     // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/embedded_h5.JPG", "rb");
 	// FILE *fptr = fopen("/home1/r/ruturajn/Downloads/ESE5070_Assignment3_ruturajn-1.pdf", "rb");
-    FILE *fptr = fopen("/home1/r/ruturajn/Downloads/FiraCode.zip", "rb");
+    // FILE *fptr = fopen("/home1/r/ruturajn/Downloads/FiraCode.zip", "rb");
     // FILE *fptr = fopen("/home1/r/ruturajn/ESE532/ese532_project/project/encoder.xo", "r");
     if (fptr == NULL) {
         printf("Unable to open file!\n");
