@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#define CODE_LENGTH (12)
+#define CODE_LENGTH (13)
 
 typedef std::vector<std::string> code_table;
 typedef std::vector<std::string> chunk_list;
@@ -39,10 +39,12 @@ static const std::string Decompress(size_t Size) {
         Code_table.push_back(std::string(1, (char)i));
 
     int Old = Read_code();
+    std::cout << "CODE: " << Old << std::endl;
     std::string Symbol(1, Old);
     std::string Output = Symbol;
     while (Input_position / 8 < Size - 1) {
         int New = Read_code();
+        std::cout << "CODE:" << New << std::endl;
         std::string Symbols;
         if (New >= (int)Code_table.size())
             Symbols = Code_table[Old] + Symbol;

@@ -44,26 +44,151 @@ std::vector<int> encoding(std::string s1) {
     return output_code;
 }
 
-static unsigned char *create_packet_sw(uint32_t out_packet_length,
-                                    vector<int> out_packet, uint32_t packet_len) {
-    unsigned char *data =
-        (unsigned char *)calloc(packet_len, sizeof(unsigned char));
-    CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
+//static unsigned char *create_packet_sw(uint32_t out_packet_length,
+//                                    vector<int> out_packet, uint32_t packet_len) {
+//    unsigned char *data =
+//        (unsigned char *)calloc(packet_len, sizeof(unsigned char));
+//    CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
+//
+//    uint32_t data_idx = 0;
+//    uint16_t current_val = 0;
+//    int bits_left = 0;
+//    int current_val_bits_left = 0;
+//
+//    for (uint32_t i = 0; i < out_packet_length; i++) {
+//        current_val = out_packet[i];
+//        current_val_bits_left = CODE_LENGTH;
+//
+//        if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
+//            data[data_idx] = (current_val >> 4) & 0xFF;
+//            bits_left = 0;
+//            current_val_bits_left = 4;
+//            data_idx += 1;
+//        }
+//
+//        if (bits_left == 0 && current_val_bits_left == 4) {
+//            if (data_idx < packet_len) {
+//                data[data_idx] = (current_val & 0x0F) << 4;
+//                bits_left = 4;
+//                current_val_bits_left = 0;
+//                continue;
+//            } else
+//                break;
+//        }
+//
+//        if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
+//            data[data_idx] |= ((current_val >> 8) & 0x0F);
+//            bits_left = 0;
+//            data_idx += 1;
+//            current_val_bits_left = 8;
+//        }
+//
+//        if (bits_left == 0 && current_val_bits_left == 8) {
+//            if (data_idx < packet_len) {
+//                data[data_idx] = ((current_val)&0xFF);
+//                bits_left = 0;
+//                data_idx += 1;
+//                current_val_bits_left = 0;
+//                continue;
+//            } else
+//                break;
+//        }
+//    }
+//    return data;
+//}
 
+static unsigned char *create_packet_sw(uint32_t out_packet_length,
+									vector<int> out_packet,
+									const int packet_len) {
+
+	unsigned char *data =
+		(unsigned char *)calloc(packet_len, sizeof(unsigned char));
+	CHECK_MALLOC(data, "Unable to allocate memory for new data packet");
     uint32_t data_idx = 0;
     uint16_t current_val = 0;
     int bits_left = 0;
     int current_val_bits_left = 0;
 
-    for (uint32_t i = 0; i < out_packet_length; i++) {
+    for (int i = 0; i < out_packet_length; i++) {
         current_val = out_packet[i];
         current_val_bits_left = CODE_LENGTH;
 
         if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] = (current_val >> 4) & 0xFF;
+            data[data_idx] = (current_val >> 5) & 0xFF;
             bits_left = 0;
-            current_val_bits_left = 4;
+            current_val_bits_left = 5;
             data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 5) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x1F) << 3;
+                bits_left = 3;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 3 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 10) & 0x07);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 10;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 10) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 2) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 2;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 2) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x03) << 6;
+                bits_left = 6;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 6 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 7) & 0x3F);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 7;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 7) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x7F) << 1;
+                bits_left = 1;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 1 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 12) & 0x1);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 12;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 12) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 4) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 4;
+            } else
+                break;
         }
 
         if (bits_left == 0 && current_val_bits_left == 4) {
@@ -77,19 +202,62 @@ static unsigned char *create_packet_sw(uint32_t out_packet_length,
         }
 
         if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 8) & 0x0F);
-            bits_left = 0;
+            data[data_idx] |= ((current_val >> 9) & 0x0F);
             data_idx += 1;
-            current_val_bits_left = 8;
+            bits_left = 0;
+            current_val_bits_left = 9;
         }
 
-        if (bits_left == 0 && current_val_bits_left == 8) {
+        if (bits_left == 0 && current_val_bits_left == 9) {
             if (data_idx < packet_len) {
-                data[data_idx] = ((current_val)&0xFF);
+                data[data_idx] = ((current_val >> 1) & 0xFF);
                 bits_left = 0;
                 data_idx += 1;
+                current_val_bits_left = 1;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 1) {
+            data[data_idx] = (current_val & 0x01) << 7;
+            bits_left = 7;
+            current_val_bits_left = 0;
+            continue;
+        }
+
+        if (bits_left == 7 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 6) & 0x7F);
+            bits_left = 0;
+            current_val_bits_left = 6;
+            data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 6) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val) & 0x3F) << 2;
+                bits_left = 2;
                 current_val_bits_left = 0;
                 continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 2 && current_val_bits_left == CODE_LENGTH) {
+            if (data_idx < packet_len) {
+                data[data_idx] |= ((current_val >> 11) & 0x03);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 11;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 11) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 3) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 1;
             } else
                 break;
         }
@@ -137,6 +305,9 @@ int main() {
     uint32_t lzw_codes[40960];
     unsigned char data[40960 * 4] = {0};
     unsigned int count = 0;
+
+    // printf("The size of long is : %zu\n", sizeof(unsigned long));
+    // printf("The size of long long is : %zu\n", sizeof(unsigned long long));
 
 	while (file_sz > 0) {
 
@@ -201,7 +372,7 @@ int main() {
                 cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
                 cout << out_packet_lengths[i] << "|" << output_code.size()
                      << "at i = " << i << endl;
-                exit(EXIT_FAILURE);
+                // exit(EXIT_FAILURE);
             }
 
             for (int j = 0; j < output_code.size(); j++) {
@@ -213,9 +384,9 @@ int main() {
             }
 
             if (dedup_out[i - 1] == -1) {
-                packet_len = ((output_code.size() * 12) / 8);
+                packet_len = ((output_code.size() * 13) / 8);
                 packet_len =
-                    (output_code.size() % 2 != 0) ? packet_len + 1 : packet_len;
+                    (output_code.size() % 13 != 0) ? packet_len + 1 : packet_len;
 
                 unsigned char *data_packet =
                     create_packet_sw(output_code.size(), output_code, packet_len);

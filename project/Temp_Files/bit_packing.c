@@ -152,7 +152,7 @@ int main() {
 
         if (bits_left == 0 && current_val_bits_left == 6) {
             if (data_idx < data_len) {
-                data[data_idx] = ((current_val >> 7) & 0x3F) << 2;
+                data[data_idx] = ((current_val) & 0x3F) << 2;
                 bits_left = 2;
                 current_val_bits_left = 0;
                 continue;

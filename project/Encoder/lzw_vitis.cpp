@@ -14,7 +14,7 @@
 #define BUFFER_LEN 16384
 #define MAX_ITERATIONS 20
 #define MAX_OUTPUT_CODE_SIZE 40960
-#define CODE_LENGTH 12
+#define CODE_LENGTH 13
 #define MAX_BIT_PACKET_DATA (MAX_OUTPUT_CODE_SIZE * 4)
 #define SEED_MURMUR 524057
 #define SEED_CRAP 75768593
@@ -40,7 +40,7 @@ typedef struct {
                                       // wide (size of unsigned long).
     unsigned long middle_key_mem[512];
     unsigned long lower_key_mem[512];
-    unsigned int
+    unsigned long
         value[ASSOCIATIVE_MEM_STORE]; // value store is 64 deep, because the
                                       // lookup mems are 64 bits wide
     unsigned int fill; // tells us how many entries we've currently stored
@@ -132,70 +132,88 @@ unsigned int my_hash(unsigned long key) {
     return hash_1 & (CAPACITY - 1);
 }
 
+// 17179869184
+//  4328521728
+//        2671
+//------------
+//        3583
 void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
-                        bool *hit, unsigned int *result) {
-    key &= 0xFFFFF; // make sure key is only 20 bits
+                        bool *hit, unsigned int *result, bool *is_exists) {
+    key &= 0x1FFFFF; // make sure key is only 21 bits
 
     unsigned int hash_val = my_hash(key);
 
     unsigned long lookup = hash_table[hash_val][0];
 
+    if (lookup == 0) {
+    	*is_exists = 0;
+    	return;
+    }
+
     // [valid][value][key]
-    unsigned int stored_key = lookup & 0xFFFFF;       // stored key is 20 bits
-    unsigned int value = (lookup >> 20) & 0xFFF;      // value is 12 bits
-    unsigned int valid = (lookup >> (20 + 12)) & 0x1; // valid is 1 bit
+    unsigned long stored_key = lookup & 0x1FFFFF;       // stored key is 21 bits
+    unsigned long value = (lookup >> 21) & 0x1FFF;      // value is 13 bits
+    unsigned long valid = (lookup >> (21 + 13)) & 0x1; // valid is 1 bit
 
     if (valid && (key == stored_key)) {
         *hit = 1;
         *result = value;
+        *is_exists = 1;
         return;
     }
 
     lookup = hash_table[hash_val][1];
 
+    if (lookup == 0) {
+    	*is_exists = 0;
+    	return;
+    }
+
     // [valid][value][key]
-    stored_key = lookup & 0xFFFFF;       // stored key is 20 bits
-    value = (lookup >> 20) & 0xFFF;      // value is 12 bits
-    valid = (lookup >> (20 + 12)) & 0x1; // valid is 1 bit
+    stored_key = lookup & 0x1FFFFF;       // stored key is 21 bits
+    value = (lookup >> 21) & 0x1FFF;      // value is 13 bits
+    valid = (lookup >> (21 + 13)) & 0x1; // valid is 1 bit
     if (valid && (key == stored_key)) {
         *hit = 1;
         *result = value;
+        *is_exists = 1;
         return;
     }
     *hit = 0;
     *result = 0;
+    *is_exists = 1;
 }
 
 void inline hash_insert(unsigned long (*hash_table)[2], unsigned int key,
                         unsigned int value, bool *collision) {
-    key &= 0xFFFFF; // make sure key is only 20 bits
-    value &= 0xFFF; // value is only 12 bits
+    key &= 0x1FFFFF; // make sure key is only 21 bits
+    value &= 0x1FFF; // value is only 13 bits
 
     unsigned int hash_val = my_hash(key);
 
     unsigned long lookup = hash_table[hash_val][0];
-    unsigned int valid = (lookup >> (20 + 12)) & 0x1;
+    unsigned long valid = (lookup >> (21 + 13)) & 0x1;
 
     if (!valid) {
-        hash_table[hash_val][0] = (1UL << (20 + 12)) | (value << 20) | key;
+        hash_table[hash_val][0] = (1UL << (21 + 13)) | ((unsigned long)(value) << 21) | key;
         *collision = 0;
         return;
     }
 
     lookup = hash_table[hash_val][1];
-    valid = (lookup >> (20 + 12)) & 0x1;
+    valid = (lookup >> (21 + 13)) & 0x1;
     if (valid) {
         *collision = 1;
         return;
     }
-    hash_table[hash_val][1] = (1UL << (20 + 12)) | (value << 20) | key;
+    hash_table[hash_val][1] = (1UL << (21 + 13)) | ((unsigned long)(value) << 21) | key;
     *collision = 0;
 }
 
 void inline assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value,
                          bool *collision) {
-    key &= 0xFFFFF; // make sure key is only 20 bits
-    value &= 0xFFF; // value is only 12 bits
+    key &= 0x1FFFFF; // make sure key is only 21 bits
+    value &= 0x1FFF; // value is only 13 bits
 
     unsigned int mem_fill = mem->fill;
 
@@ -204,13 +222,13 @@ void inline assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value,
         unsigned int key_middle = (key >> 9) & 0x1FF;
         unsigned int key_low = (key)&0x1FF;
         mem->upper_key_mem[key_high] |=
-            (1 << mem_fill); // set the fill'th bit to 1, while preserving
+            (1UL << mem_fill); // set the fill'th bit to 1, while preserving
                              // everything else
         mem->middle_key_mem[key_middle] |=
-            (1 << mem_fill); // set the fill'th bit to 1, while preserving
+            (1UL << mem_fill); // set the fill'th bit to 1, while preserving
                              // everything else
         mem->lower_key_mem[key_low] |=
-            (1 << mem_fill); // set the fill'th bit to 1, while preserving
+            (1UL << mem_fill); // set the fill'th bit to 1, while preserving
                              // everything else
         mem->value[mem_fill] = value;
         mem->fill = mem_fill + 1;
@@ -222,14 +240,14 @@ void inline assoc_insert(assoc_mem *mem, unsigned int key, unsigned int value,
 
 void inline assoc_lookup(assoc_mem *mem, unsigned int key, bool *hit,
                          unsigned int *result) {
-    key &= 0xFFFFF; // make sure key is only 20 bits
+    key &= 0x1FFFFF; // make sure key is only 21 bits
     unsigned int key_high = (key >> 18) & 0x1FF;
     unsigned int key_middle = (key >> 9) & 0x1FF;
     unsigned int key_low = (key)&0x1FF;
 
-    unsigned int match_high = mem->upper_key_mem[key_high];
-    unsigned int match_middle = mem->middle_key_mem[key_middle];
-    unsigned int match_low = mem->lower_key_mem[key_low];
+    unsigned long match_high = mem->upper_key_mem[key_high];
+    unsigned long match_middle = mem->middle_key_mem[key_middle];
+    unsigned long match_low = mem->lower_key_mem[key_low];
 
     unsigned long match = match_high & match_middle & match_low;
 
@@ -277,8 +295,9 @@ void inline insert(unsigned long (*hash_table)[2], assoc_mem *mem,
 
 void inline lookup(unsigned long (*hash_table)[2], assoc_mem *mem,
                    unsigned int key, bool *hit, unsigned int *result) {
-    hash_lookup(hash_table, key, hit, result);
-    if (!*hit) {
+	bool is_exists = 0;
+    hash_lookup(hash_table, key, hit, result, &is_exists);
+    if (!*hit && is_exists) {
         assoc_lookup(mem, key, hit, result);
     }
 }
@@ -307,7 +326,7 @@ LOOP2:
         my_assoc_mem.lower_key_mem[i] = 0;
     }
 
-    int next_code = 256;
+    unsigned int next_code = 256;
     uint8_t failure = 0;
     uint32_t start_idx = generic_info[INFO_START_IDX];
     uint32_t end_idx = generic_info[INFO_END_IDX];
@@ -320,6 +339,12 @@ LOOP3:
     for (int i = start_idx; i < end_idx - 1; i++) {
         next_char = input[i + 1];
         bool hit = 0;
+//        if (next_code >= 4095)
+//        	printf("YEP YEPE!!\n");
+//        if (((prefix_code << 8) + next_char) == 2671)
+//        	printf("THIS IS KEY %d | %c\n", prefix_code, next_char);
+//        if (next_code == 2064)
+//        	printf("THIS IS NEXT CODE %d | %c\n", prefix_code, next_char);
         lookup(hash_table, &my_assoc_mem, ((prefix_code << 8) + next_char), &hit,
                &code);
         if (!hit) {
@@ -347,20 +372,91 @@ LOOP3:
 
 void create_packet(const int out_packet_length, uint32_t* out_packet,
                    unsigned char *data, const int packet_len) {
-
     uint32_t data_idx = 0;
     uint16_t current_val = 0;
     int bits_left = 0;
     int current_val_bits_left = 0;
-    for (uint32_t i = 0; i < out_packet_length; i++) {
+
+    for (int i = 0; i < out_packet_length; i++) {
         current_val = out_packet[i];
         current_val_bits_left = CODE_LENGTH;
 
         if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] = (current_val >> 4) & 0xFF;
+            data[data_idx] = (current_val >> 5) & 0xFF;
             bits_left = 0;
-            current_val_bits_left = 4;
+            current_val_bits_left = 5;
             data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 5) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x1F) << 3;
+                bits_left = 3;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 3 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 10) & 0x07);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 10;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 10) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 2) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 2;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 2) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x03) << 6;
+                bits_left = 6;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 6 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 7) & 0x3F);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 7;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 7) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x7F) << 1;
+                bits_left = 1;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 1 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 12) & 0x1);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 12;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 12) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 4) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 4;
+            } else
+                break;
         }
 
         if (bits_left == 0 && current_val_bits_left == 4) {
@@ -374,25 +470,116 @@ void create_packet(const int out_packet_length, uint32_t* out_packet,
         }
 
         if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 8) & 0x0F);
-            bits_left = 0;
+            data[data_idx] |= ((current_val >> 9) & 0x0F);
             data_idx += 1;
-            current_val_bits_left = 8;
+            bits_left = 0;
+            current_val_bits_left = 9;
         }
 
-        if (bits_left == 0 && current_val_bits_left == 8) {
+        if (bits_left == 0 && current_val_bits_left == 9) {
             if (data_idx < packet_len) {
-                data[data_idx] = ((current_val)&0xFF);
+                data[data_idx] = ((current_val >> 1) & 0xFF);
                 bits_left = 0;
                 data_idx += 1;
+                current_val_bits_left = 1;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 1) {
+            data[data_idx] = (current_val & 0x01) << 7;
+            bits_left = 7;
+            current_val_bits_left = 0;
+            continue;
+        }
+
+        if (bits_left == 7 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 6) & 0x7F);
+            bits_left = 0;
+            current_val_bits_left = 6;
+            data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 6) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val) & 0x3F) << 2;
+                bits_left = 2;
                 current_val_bits_left = 0;
                 continue;
             } else
                 break;
         }
-    }
 
+        if (bits_left == 2 && current_val_bits_left == CODE_LENGTH) {
+            if (data_idx < packet_len) {
+                data[data_idx] |= ((current_val >> 11) & 0x03);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 11;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 11) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 3) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 1;
+            } else
+                break;
+        }
+    }
 }
+
+// void create_packet(const int out_packet_length, uint32_t* out_packet,
+//                    unsigned char *data, const int packet_len) {
+// 
+//     uint32_t data_idx = 0;
+//     uint16_t current_val = 0;
+//     int bits_left = 0;
+//     int current_val_bits_left = 0;
+//     for (uint32_t i = 0; i < out_packet_length; i++) {
+//         current_val = out_packet[i];
+//         current_val_bits_left = CODE_LENGTH;
+// 
+//         if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
+//             data[data_idx] = (current_val >> 4) & 0xFF;
+//             bits_left = 0;
+//             current_val_bits_left = 4;
+//             data_idx += 1;
+//         }
+// 
+//         if (bits_left == 0 && current_val_bits_left == 4) {
+//             if (data_idx < packet_len) {
+//                 data[data_idx] = (current_val & 0x0F) << 4;
+//                 bits_left = 4;
+//                 current_val_bits_left = 0;
+//                 continue;
+//             } else
+//                 break;
+//         }
+// 
+//         if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
+//             data[data_idx] |= ((current_val >> 8) & 0x0F);
+//             bits_left = 0;
+//             data_idx += 1;
+//             current_val_bits_left = 8;
+//         }
+// 
+//         if (bits_left == 0 && current_val_bits_left == 8) {
+//             if (data_idx < packet_len) {
+//                 data[data_idx] = ((current_val)&0xFF);
+//                 bits_left = 0;
+//                 data_idx += 1;
+//                 current_val_bits_left = 0;
+//                 continue;
+//             } else
+//                 break;
+//         }
+//     }
+// 
+// }
 
 void lzw(unsigned char input[BUFFER_LEN],
          unsigned char bit_packed_data[MAX_OUTPUT_CODE_SIZE * 4],
@@ -454,9 +641,9 @@ void lzw(unsigned char input[BUFFER_LEN],
             out_packet_lengths[i] = generic_info[INFO_OUT_PACKET_LENGTH];
 
             if (dedup_out[i - 1] == -1) {
-                packet_len = ((out_packet_lengths[i] * 12) / 8);
+                packet_len = ((out_packet_lengths[i] * CODE_LENGTH) / 8);
                 packet_len =
-                    ((out_packet_lengths[i] & 1) != 0) ? packet_len + 1 : packet_len;
+                    ((out_packet_lengths[i] % 13) != 0) ? packet_len + 1 : packet_len;
                 header = packet_len << 1;
 
                 // 0x00 00 0F 2A
