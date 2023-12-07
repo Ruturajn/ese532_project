@@ -145,10 +145,10 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
 
     unsigned long lookup = hash_table[hash_val][0];
 
-    if (lookup == 0) {
-    	*is_exists = 0;
-    	return;
-    }
+//    if (lookup == 0) {
+//    	*is_exists = 0;
+//    	return;
+//    }
 
     // [valid][value][key]
     unsigned long stored_key = lookup & 0x1FFFFF;       // stored key is 21 bits
@@ -164,10 +164,12 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
 
     lookup = hash_table[hash_val][1];
 
-    if (lookup == 0) {
-    	*is_exists = 0;
-    	return;
-    }
+    *is_exists = (lookup && 1);
+
+//    if (lookup == 0) {
+//    	*is_exists = 0;
+//    	return;
+//    }
 
     // [valid][value][key]
     stored_key = lookup & 0x1FFFFF;       // stored key is 21 bits
@@ -181,7 +183,7 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
     }
     *hit = 0;
     *result = 0;
-    *is_exists = 1;
+    *is_exists = (lookup && 1);
 }
 
 void inline hash_insert(unsigned long (*hash_table)[2], unsigned int key,
@@ -339,12 +341,6 @@ LOOP3:
     for (int i = start_idx; i < end_idx - 1; i++) {
         next_char = input[i + 1];
         bool hit = 0;
-//        if (next_code >= 4095)
-//        	printf("YEP YEPE!!\n");
-//        if (((prefix_code << 8) + next_char) == 2671)
-//        	printf("THIS IS KEY %d | %c\n", prefix_code, next_char);
-//        if (next_code == 2064)
-//        	printf("THIS IS NEXT CODE %d | %c\n", prefix_code, next_char);
         lookup(hash_table, &my_assoc_mem, ((prefix_code << 8) + next_char), &hit,
                &code);
         if (!hit) {
@@ -552,6 +548,7 @@ void create_packet(const int out_packet_length, uint32_t* out_packet,
                 data[data_idx] = (current_val & 0xFF);
                 bits_left = 0;
                 current_val_bits_left = 0;
+                data_idx += 1;
                 continue;
             } else
                 break;

@@ -284,6 +284,7 @@ static unsigned char *create_packet_sw(uint32_t out_packet_length,
                 data[data_idx] = (current_val & 0xFF);
                 bits_left = 0;
                 current_val_bits_left = 0;
+                data_idx += 1;
                 continue;
             } else
                 break;

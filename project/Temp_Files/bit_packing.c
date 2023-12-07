@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define LZW_CODES_LEN 9
+#define LZW_CODES_LEN 10
 #define CODE_LENGTH 13
 
 int main() {
@@ -23,7 +23,11 @@ int main() {
     // 0000 0010 1010 0000 0001 1010 0000 0000 1100 1010 0000 0010 0000 0000 0010 0110 0000 0001 1010 0100 0000 1110 1000 0000 0111 0100 0000 0011 0110 0000
     // 0       2  A    0    1   A    0     0    C    A    0    2    0    0    2    6    0    1    A    4     0   E    8    0   7     4    0     3   6    0
 
-    uint32_t codes_arr[LZW_CODES_LEN] = { 84, 104, 101, 32, 76, 105, 116, 116, 108};
+    // 0 0000 0101 0100 // 0 0000 0110 1000 // 0 0000 0110 0101 // 0 0000 0010 0000 // 0 0000 0100 1100 // 0 0000 0110 1001 // 0 0000 0111 0100 // 0 0000 0110 1100
+    // 0000 0010 1010 0000 0001 1010 0000 0000 1100 1010 0000 0010 0000 0000 0010 0110 0000 0001 1010 0100 0000 1110 1000 0000 0110 1100
+    // 0       2  A    0    1   A    0     0    C    A    0    2    0    0    2    6    0    1    A    4     0   E    8    0    6    C
+    // uint32_t codes_arr[LZW_CODES_LEN] = { 84, 104, 101, 32, 76, 105, 116, 116, 108};
+    uint32_t codes_arr[LZW_CODES_LEN] = { 255, 3039, 2000, 1000, 1, 1024, 4444, 56, 56, 678};
     int data_len = ((LZW_CODES_LEN * 13) / 8) + 1;
 
     unsigned char *data = (unsigned char *)calloc(data_len, sizeof(unsigned char));
@@ -212,6 +216,7 @@ int main() {
                 data[data_idx] = (current_val & 0xFF);
                 bits_left = 0;
                 current_val_bits_left = 0;
+                data_idx += 1;
                 continue;
             } else
                 break;
