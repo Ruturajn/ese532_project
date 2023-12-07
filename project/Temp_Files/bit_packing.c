@@ -3,17 +3,27 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define LZW_CODES_LEN 5
+#define LZW_CODES_LEN 9
 #define CODE_LENGTH 13
 
 int main() {
 
     // 0000 0000 1111 1111 // 0000 1011 1101 1111 // 0000 0111 1101 0000 // 0000 0011 1110 1000 // 0000 0000 0000 0001
-    // 0 0000 1111 1111 // 0 1011 1101 1111 // 0 0111 1101 0000 // 0 0011 1110 1000 // 0 0000 0000 0001
-    // 0000 0111 1111 1010 1111 0111 1100 1111 1010 0000 0011 1110 1000 0000 0000 0000 1
-    // 0    7    f     a    f    7    C   f    a     0    3    E    8    0    0
+    // 0001 0110 1001 0110 // 0001 1010 0000 1010 // 0000 1011 0101 0001 // 0001 0110 0000 1110
+
+    //
+    // 0 0000 1111 1111 // 0 1011 1101 1111 // 0 0111 1101 0000 // 0 0011 1110 1000 // 0 0000 0000 0001 /**/ 1 0110 1001 0110 // 1 1010 0000 1010
+    // 0000 0111 1111 1010 1111 0111 1100 1111 1010 0000 0011 1110 1000 0000 0000 0000 1101 1010 0101 1011 0100 0001 0100 1011 0101 0001 // 1011 0000 0111 0
+    // 0    7    f     a    f    7    C   f    a     0    3    E    8    0    0    0   D     A    5    B    4    1    4    b    5    1       B    0    7
     // 0 1
-    uint16_t codes_arr[LZW_CODES_LEN] = { 255, 3039, 2000, 1000, 1};
+    // uint32_t codes_arr[LZW_CODES_LEN] = { 255, 3039, 2000, 1000, 1, 5782, 6666, 2897, 5646};
+
+    // 0000 0000 0101 0100 // 0000 0000 0110 1000 // 0000 0000 0110 0101 // 0000 0000 0010 0000 // 0000 0000 0100 1100 // 0000 0000 0110 1001 // 0000 0000 0111 0100 // 0000 0000 0111 0100 // 0000 0000 0110 1100
+    // 0 0000 0101 0100 // 0 0000 0110 1000 // 0 0000 0110 0101 // 0 0000 0010 0000 // 0 0000 0100 1100 // 0 0000 0110 1001 // 0 0000 0111 0100 // 0 0000 0111 0100 // 0 0000 0110 1100
+    // 0000 0010 1010 0000 0001 1010 0000 0000 1100 1010 0000 0010 0000 0000 0010 0110 0000 0001 1010 0100 0000 1110 1000 0000 0111 0100 0000 0011 0110 0000
+    // 0       2  A    0    1   A    0     0    C    A    0    2    0    0    2    6    0    1    A    4     0   E    8    0   7     4    0     3   6    0
+
+    uint32_t codes_arr[LZW_CODES_LEN] = { 84, 104, 101, 32, 76, 105, 116, 116, 108};
     int data_len = ((LZW_CODES_LEN * 13) / 8) + 1;
 
     unsigned char *data = (unsigned char *)calloc(data_len, sizeof(unsigned char));
@@ -175,16 +185,43 @@ int main() {
                 data[data_idx] = ((current_val >> 3) & 0xFF);
                 bits_left = 0;
                 data_idx += 1;
-                current_val_bits_left = 1;
+                current_val_bits_left = 3;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 3) {
+            if (data_idx < data_len) {
+                data[data_idx] = ((current_val) & 0x07) << 5;
+                bits_left = 5;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 5 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 8) & 0x1F);
+            bits_left = 0;
+            current_val_bits_left = 8;
+            data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 8) {
+            if (data_idx < data_len) {
+                data[data_idx] = (current_val & 0xFF);
+                bits_left = 0;
+                current_val_bits_left = 0;
+                continue;
             } else
                 break;
         }
     }
 
-    printf("%d\n", data_idx);
+    printf("Data Length : %d\n", data_idx);
 
     for (int i = 0; i < data_len; i++)
-        printf("%x", data[i]);
+        printf("%x\n", data[i]);
 
     putchar('\n');
 

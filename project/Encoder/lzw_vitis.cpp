@@ -373,7 +373,7 @@ LOOP3:
 void create_packet(const int out_packet_length, uint32_t* out_packet,
                    unsigned char *data, const int packet_len) {
     uint32_t data_idx = 0;
-    uint16_t current_val = 0;
+    uint32_t current_val = 0;
     int bits_left = 0;
     int current_val_bits_left = 0;
 
@@ -525,7 +525,34 @@ void create_packet(const int out_packet_length, uint32_t* out_packet,
                 data[data_idx] = ((current_val >> 3) & 0xFF);
                 bits_left = 0;
                 data_idx += 1;
-                current_val_bits_left = 1;
+                current_val_bits_left = 3;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 3) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val) & 0x07) << 5;
+                bits_left = 5;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 5 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 8) & 0x1F);
+            bits_left = 0;
+            current_val_bits_left = 8;
+            data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 8) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0xFF);
+                bits_left = 0;
+                current_val_bits_left = 0;
+                continue;
             } else
                 break;
         }
