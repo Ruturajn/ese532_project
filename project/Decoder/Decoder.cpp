@@ -90,6 +90,8 @@ int main(int Parameter_count, char *Parameters[]) {
 
         if ((Header & 1) == 0) {
             int Chunk_size = Header >> 1;
+            std::cout << "Chunk size is :  " << Chunk_size
+                      << ".\n";
             const std::string &Chunk = Decompress(Chunk_size);
             Chunks.push_back(Chunk);
             std::cout << "Decompressed chunk of size " << Chunk.length()
