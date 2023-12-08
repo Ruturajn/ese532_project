@@ -19,6 +19,7 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+#include <atomic>
 
 #define NUM_PACKETS 2
 #define pipe_depth 4
@@ -47,6 +48,9 @@ std::condition_variable cv;
 bool ready = false;
 bool processed = false;
 unsigned int chunk_size = CHUNK_SIZE;
+unsigned char *collected_data = NULL;
+std::atomic<bool> done_flag(false);
+FILE *fptr_write = NULL;
 
 typedef struct __attribute__((packed)) RawData {
     int length_sum;                 /// The total length of the input buffer.
@@ -147,18 +151,40 @@ static unsigned char *create_packet(int32_t chunk_idx,
     return data;
 }
 
-static void compression_pipeline(
-    RawData *r_data, unsigned char *host_input, uint32_t *output_codes,
-    uint32_t *chunk_indices, uint32_t *output_code_lengths, CLDevice dev,
-    cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
-    cl::Buffer chunk_indices_buffer, cl::Buffer out_packet_lengths_buffer,
-    int64_t* dedup_out_data, cl::Buffer dedup_out_buffer,
-    unsigned char *bit_packed_data, cl::Buffer bit_packed_data_buffer) {
+RawData *r_data;
+unsigned char *host_input;
+uint32_t *chunk_indices;
+uint32_t *stat_data;
+CLDevice dev;
+cl::Buffer lzw_input_buffer;
+cl::Buffer chunk_indices_buffer;
+cl::Buffer stat_data_buffer;
+int64_t* dedup_out_data;
+cl::Buffer dedup_out_buffer;
+unsigned char *bit_packed_data;
+cl::Buffer bit_packed_data_buffer;
+int thread_length_sum;
+
+char *file = NULL;
+
+static void compression_pipeline() {
+
+    fptr_write = fopen(file, "wb");
+    if (fptr_write == NULL) {
+        printf("Error creating file for compressed output!!\n");
+        exit(EXIT_FAILURE);
+    }
+
 
     while (true) {
 
-        std::unique_lock lk(m);
+        if (done_flag.load())
+            break;
+
+        std::unique_lock<mutex> lk(m);
         cv.wait(lk, []{ return ready; });
+
+        cout << "In worker thread lock acquired!!" << endl;
 
         vector<uint32_t> vect;
         string sha_fingerprint;
@@ -179,13 +205,13 @@ static void compression_pipeline(
         // double total_time_2 = 0;
 
         memcpy(host_input, collected_data,
-               sizeof(unsigned char) * r_data->length_sum);
+               sizeof(unsigned char) * thread_length_sum);
 
         total_time.start();
 
         // RUN CDC
         time_cdc.start();
-        fast_cdc(collected_data, r_data->length_sum, chunk_size, vect);
+        fast_cdc(collected_data, thread_length_sum, chunk_size, vect);
         // cdc(r_data->pipeline_buffer, r_data->length_sum, vect);
         time_cdc.stop();
 
@@ -197,7 +223,7 @@ static void compression_pipeline(
             // RUN SHA
             time_sha.start();
             sha_fingerprint =
-            sha_256(r_data->pipeline_buffer, vect[i], vect[i + 1]);
+            sha_256(collected_data, vect[i], vect[i + 1]);
             time_sha.stop();
 
             // RUN DEDUP
@@ -214,10 +240,10 @@ static void compression_pipeline(
 
         dev.kernel.setArg(0, lzw_input_buffer);
         dev.kernel.setArg(1, bit_packed_data_buffer);
-        dev.kernel.setArg(2, lzw_output_buffer);
-        dev.kernel.setArg(3, chunk_indices_buffer);
-        dev.kernel.setArg(4, out_packet_lengths_buffer);
-        dev.kernel.setArg(5, dedup_out_buffer);
+        /* dev.kernel.setArg(2, lzw_output_buffer); */
+        dev.kernel.setArg(2, chunk_indices_buffer);
+        dev.kernel.setArg(3, stat_data_buffer);
+        dev.kernel.setArg(4, dedup_out_buffer);
 
         dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer, dedup_out_buffer},
                                            0 /* 0 means from host*/, NULL,
@@ -232,12 +258,12 @@ static void compression_pipeline(
         /* compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>(); */
 
         dev.queue.enqueueMigrateMemObjects(
-            {bit_packed_data_buffer, lzw_output_buffer, out_packet_lengths_buffer},
+            {bit_packed_data_buffer, stat_data_buffer},
             CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
         clWaitForEvents(1, (const cl_event *)&done_event[0]);
         time_lzw.stop();
 
-        if (output_code_lengths[0] & 0x1) {
+        if (stat_data[0] & 0x1) {
             printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
             exit(EXIT_FAILURE);
         }
@@ -270,7 +296,10 @@ static void compression_pipeline(
         // }
         total_time.stop();
 
-        fwrite(bit_packed_data, sizeof(unsigned char) * (output_code_lengths[0] >> 1), 1, r_data->fptr_write);
+        cout << "Bit packed data: " << bit_packed_data[0] << endl;
+        cout << "Offset : " << (stat_data[0] << 1) << endl;
+
+        fwrite(bit_packed_data, sizeof(unsigned char) * (stat_data[0] >> 1), 1, fptr_write);
 
         // for (auto it : final_data) {
         //     if (it.second != NULL) {
@@ -291,6 +320,8 @@ static void compression_pipeline(
         lk.unlock();
         cv.notify_one();
     }
+
+    fclose(fptr_write);
 }
 
 int main(int argc, char *argv[]) {
@@ -305,30 +336,24 @@ int main(int argc, char *argv[]) {
     ESE532_Server server;
 
     int blocksize = BLOCKSIZE;
-    char *file = strdup("compressed_file.bin");
+    file = strdup("compressed_file.bin");
     char *kernel_name = strdup("lzw.xclbin");
 
     // set blocksize if decalred through command line
     handle_input(argc, argv, &blocksize, &file, &kernel_name, &chunk_size);
 
-    RawData *r_data = (RawData *)calloc(1, sizeof(RawData));
+    r_data = (RawData *)calloc(1, sizeof(RawData));
     CHECK_MALLOC(r_data, "Unable to allocate memory for raw data");
-
-    r_data->fptr_write = fopen(file, "wb");
-    if (r_data->fptr_write == NULL) {
-        printf("Error creating file for compressed output!!\n");
-        exit(EXIT_FAILURE);
-    }
 
     r_data->pipeline_buffer =
         (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
     CHECK_MALLOC(r_data->pipeline_buffer,
                  "Unable to allocate memory for pipeline buffer");
 
-    unsigned char *collected_data =
+    collected_data =
         (unsigned char *)calloc(NUM_PACKETS * blocksize, sizeof(unsigned char));
     CHECK_MALLOC(collected_data,
-                 "Unable to allocate memory for pipeline buffer");
+                 "Unable to allocate memory for collected data");
 
     for (int i = 0; i < (NUM_PACKETS); i++) {
         input[i] = (unsigned char *)calloc((blocksize + HEADER),
@@ -353,7 +378,6 @@ int main(int argc, char *argv[]) {
     char *fileBuf = read_binary_file(binaryFile, fileBufSize);
     cl::Program::Binaries bins{{fileBuf, fileBufSize}};
     cl::Program program(context, devices, bins, NULL, &err);
-    CLDevice dev;
     dev.queue = cl::CommandQueue(context, device,
                                  CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
                                  &err);
@@ -363,56 +387,53 @@ int main(int argc, char *argv[]) {
     // Step 2: Create buffers and initialize test values
     // ------------------------------------------------------------------------------------
 
-    cl::Buffer lzw_input_buffer =
+    lzw_input_buffer =
         cl::Buffer(context, CL_MEM_READ_ONLY,
                    sizeof(unsigned char) * NUM_PACKETS * blocksize, NULL, &err);
-    unsigned char *host_input = (unsigned char *)dev.queue.enqueueMapBuffer(
+    host_input = (unsigned char *)dev.queue.enqueueMapBuffer(
         lzw_input_buffer, CL_TRUE, CL_MAP_WRITE, 0,
         sizeof(unsigned char) * NUM_PACKETS * blocksize);
 
-    cl::Buffer lzw_output_buffer =
-        cl::Buffer(context, CL_MEM_WRITE_ONLY,
-                   sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err);
-    uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(
-        lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0,
-        sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE);
+    /* cl::Buffer lzw_output_buffer = */
+    /*     cl::Buffer(context, CL_MEM_WRITE_ONLY, */
+    /*                sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err); */
+    /* uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer( */
+    /*     lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0, */
+    /*     sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE); */
 
-    cl::Buffer chunk_indices_buffer =
+    chunk_indices_buffer =
         cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * MAX_LZW_CHUNKS,
                    NULL, &err);
-    uint32_t *chunk_indices = (uint32_t *)dev.queue.enqueueMapBuffer(
+    chunk_indices = (uint32_t *)dev.queue.enqueueMapBuffer(
         chunk_indices_buffer, CL_TRUE, CL_MAP_WRITE, 0,
         sizeof(uint32_t) * MAX_LZW_CHUNKS);
 
-    cl::Buffer out_packet_lengths_buffer =
+    stat_data_buffer =
         cl::Buffer(context, CL_MEM_WRITE_ONLY,
-                   sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
-    uint32_t *output_code_lengths = (uint32_t *)dev.queue.enqueueMapBuffer(
-        out_packet_lengths_buffer, CL_TRUE, CL_MAP_READ, 0,
-        sizeof(uint32_t) * MAX_CHUNK_SIZE);
+                   sizeof(uint32_t) * 4, NULL, &err);
+    stat_data = (uint32_t *)dev.queue.enqueueMapBuffer(
+        stat_data_buffer, CL_TRUE, CL_MAP_READ, 0,
+        sizeof(uint32_t) * 4);
 
-    cl::Buffer dedup_out_buffer =
+    dedup_out_buffer =
         cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(int64_t) * MAX_LZW_CHUNKS,
                    NULL, &err);
-    int64_t *dedup_out_data = (int64_t *)dev.queue.enqueueMapBuffer(
+    dedup_out_data = (int64_t *)dev.queue.enqueueMapBuffer(
         dedup_out_buffer, CL_TRUE, CL_MAP_WRITE, 0,
         sizeof(int64_t) * MAX_LZW_CHUNKS);
 
-    cl::Buffer bit_packed_data_buffer =
+    bit_packed_data_buffer =
         cl::Buffer(context, CL_MEM_WRITE_ONLY,
                    sizeof(unsigned char) * MAX_OUTPUT_BUF_SIZE * 4, NULL, &err);
-    unsigned char *bit_packed_data = (unsigned char *)dev.queue.enqueueMapBuffer(
+    bit_packed_data = (unsigned char *)dev.queue.enqueueMapBuffer(
         bit_packed_data_buffer, CL_TRUE, CL_MAP_READ, 0,
         sizeof(unsigned char) * MAX_OUTPUT_BUF_SIZE * 4);
 
-    std::thread worker(&compression_pipeline,
-        r_data, host_input, output_codes, chunk_indices,
-        output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
-        chunk_indices_buffer, out_packet_lengths_buffer,
-        dedup_out_data, dedup_out_buffer,
-        bit_packed_data, bit_packed_data_buffer);
+    std::thread worker(&compression_pipeline);
 
     pin_thread_to_cpu(worker, 2);
+
+    bool is_first_iteration = true;
 
     // Loop until last message
     while (!done) {
@@ -442,21 +463,36 @@ int main(int argc, char *argv[]) {
 
         if (writer == (NUM_PACKETS - 1) || (length < blocksize && length > 0) ||
             done == 1) {
-            // Wait for the workder.
-            {
-                std::unique_lock lk(m);
-                cv.wait(lk, []{ return processed; });
-                cout << "Waiting for the worker!!" << endl;
+            if (is_first_iteration) {
+                // Send data to the worker.
+                {
+                    cout << "Sending data to the worker!!" << endl;
+                    std::lock_guard<mutex> lk(m);
+                    ready = true;
+                    thread_length_sum = r_data->length_sum;
+                    memcpy(collected_data, r_data->pipeline_buffer, r_data->length_sum);
+                }
+                cv.notify_one();
+                is_first_iteration = false;
+            } else {
+                // Wait for the workder.
+                {
+                    cout << "Waiting for the worker!!" << endl;
+                    std::unique_lock<mutex> lk(m);
+                    cv.wait(lk, []{ return processed; });
+                }
+
+                // Send data to the worker.
+                {
+                    cout << "Sending data to the worker!!" << endl;
+                    std::lock_guard<mutex> lk(m);
+                    ready = true;
+                    thread_length_sum = r_data->length_sum;
+                    memcpy(collected_data, r_data->pipeline_buffer, r_data->length_sum);
+                }
+                cv.notify_one();
             }
 
-            // Send data to the worker.
-            {
-                std::lock_guard lk(m);
-                ready = true;
-                memcpy(collected_data, r_data->pipeline_buffer, r_data->length_sum);
-                cout << "Sending data to the worker!!" << endl;
-            }
-            cv.notify_one();
             // compression_timer.start();
             // compression_pipeline(
             //     r_data, host_input, output_codes, chunk_indices,
@@ -465,29 +501,36 @@ int main(int argc, char *argv[]) {
             //     dedup_out_data, dedup_out_buffer,
             //     bit_packed_data, bit_packed_data_buffer, chunk_size);
             // compression_timer.stop();
-            }
             writer = 0;
             r_data->length_sum = 0;
         } else
             writer += 1;
     }
 
+    // Wait for the workder.
+    {
+        cout << "Waiting for the worker!!" << endl;
+        done_flag = true;
+        std::unique_lock<mutex> lk(m);
+        cv.wait(lk, []{ return processed; });
+    }
+
+    worker.join();
+
     for (int i = 0; i < (NUM_PACKETS); i++)
         free(input[i]);
 
-    fclose(r_data->fptr_write);
     dev.queue.enqueueUnmapMemObject(lzw_input_buffer, host_input);
-    dev.queue.enqueueUnmapMemObject(lzw_output_buffer, output_codes);
+    /* dev.queue.enqueueUnmapMemObject(lzw_output_buffer, output_codes); */
     dev.queue.enqueueUnmapMemObject(chunk_indices_buffer, chunk_indices);
-    dev.queue.enqueueUnmapMemObject(out_packet_lengths_buffer,
-                                    output_code_lengths);
+    dev.queue.enqueueUnmapMemObject(stat_data_buffer,
+                                    stat_data);
     dev.queue.finish();
 
     free(r_data->pipeline_buffer);
     free(r_data);
     free(collected_data);
 
-    worker.join();
 
     // Print Latencies
     cout << "--------------- Total Latencies ---------------" << endl;

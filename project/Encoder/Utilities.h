@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <vector>
+#include <thread>
 
 // When creating a buffer with user pointer (CL_MEM_USE_HOST_PTR), under the
 // hood
@@ -86,4 +87,5 @@ void Exit_with_error(const char *s);
 void Load_data(unsigned char *Data);
 void Store_data(const char *Filename, unsigned char *Data, unsigned int Size);
 void Check_data(unsigned char *Data, unsigned int Size);
+void pin_thread_to_cpu(std::thread &t, int cpu_num);
 #endif

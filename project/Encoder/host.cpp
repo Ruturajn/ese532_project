@@ -141,10 +141,10 @@ static unsigned char *create_packet(int32_t chunk_idx,
 }
 
 static void compression_pipeline(
-    RawData *r_data, unsigned char *host_input, uint32_t *output_codes,
-    uint32_t *chunk_indices, uint32_t *output_code_lengths, CLDevice dev,
-    cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
-    cl::Buffer chunk_indices_buffer, cl::Buffer out_packet_lengths_buffer,
+    RawData *r_data, unsigned char *host_input,
+    uint32_t *chunk_indices, uint32_t *stat_data, CLDevice dev,
+    cl::Buffer lzw_input_buffer,
+    cl::Buffer chunk_indices_buffer, cl::Buffer stat_data_buffer,
     int64_t* dedup_out_data, cl::Buffer dedup_out_buffer,
     unsigned char *bit_packed_data, cl::Buffer bit_packed_data_buffer,
     unsigned int chunk_size) {
@@ -203,10 +203,10 @@ static void compression_pipeline(
 
     dev.kernel.setArg(0, lzw_input_buffer);
     dev.kernel.setArg(1, bit_packed_data_buffer);
-    dev.kernel.setArg(2, lzw_output_buffer);
-    dev.kernel.setArg(3, chunk_indices_buffer);
-    dev.kernel.setArg(4, out_packet_lengths_buffer);
-    dev.kernel.setArg(5, dedup_out_buffer);
+    /* dev.kernel.setArg(2, lzw_output_buffer); */
+    dev.kernel.setArg(2, chunk_indices_buffer);
+    dev.kernel.setArg(3, stat_data_buffer);
+    dev.kernel.setArg(4, dedup_out_buffer);
 
     dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer, dedup_out_buffer},
                                        0 /* 0 means from host*/, NULL,
@@ -221,12 +221,12 @@ static void compression_pipeline(
     /* compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>(); */
 
     dev.queue.enqueueMigrateMemObjects(
-        {bit_packed_data_buffer, lzw_output_buffer, out_packet_lengths_buffer},
+        {bit_packed_data_buffer, stat_data_buffer},
         CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
     clWaitForEvents(1, (const cl_event *)&done_event[0]);
     time_lzw.stop();
 
-    if (output_code_lengths[0] & 0x1) {
+    if (stat_data[0] & 0x1) {
         printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
         exit(EXIT_FAILURE);
     }
@@ -259,7 +259,7 @@ static void compression_pipeline(
     // }
     total_time.stop();
 
-    fwrite(bit_packed_data, sizeof(unsigned char) * (output_code_lengths[0] >> 1), 1, r_data->fptr_write);
+    fwrite(bit_packed_data, sizeof(unsigned char) * (stat_data[0] >> 1), 1, r_data->fptr_write);
 
     // for (auto it : final_data) {
     //     if (it.second != NULL) {
@@ -349,12 +349,12 @@ int main(int argc, char *argv[]) {
         lzw_input_buffer, CL_TRUE, CL_MAP_WRITE, 0,
         sizeof(unsigned char) * NUM_PACKETS * blocksize);
 
-    cl::Buffer lzw_output_buffer =
-        cl::Buffer(context, CL_MEM_WRITE_ONLY,
-                   sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err);
-    uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(
-        lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0,
-        sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE);
+    /* cl::Buffer lzw_output_buffer = */
+    /*     cl::Buffer(context, CL_MEM_WRITE_ONLY, */
+    /*                sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err); */
+    /* uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer( */
+    /*     lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0, */
+    /*     sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE); */
 
     cl::Buffer chunk_indices_buffer =
         cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * MAX_LZW_CHUNKS,
@@ -363,12 +363,12 @@ int main(int argc, char *argv[]) {
         chunk_indices_buffer, CL_TRUE, CL_MAP_WRITE, 0,
         sizeof(uint32_t) * MAX_LZW_CHUNKS);
 
-    cl::Buffer out_packet_lengths_buffer =
+    cl::Buffer stat_data_buffer =
         cl::Buffer(context, CL_MEM_WRITE_ONLY,
-                   sizeof(uint32_t) * MAX_CHUNK_SIZE, NULL, &err);
-    uint32_t *output_code_lengths = (uint32_t *)dev.queue.enqueueMapBuffer(
-        out_packet_lengths_buffer, CL_TRUE, CL_MAP_READ, 0,
-        sizeof(uint32_t) * MAX_CHUNK_SIZE);
+                   sizeof(uint32_t) * 4, NULL, &err);
+    uint32_t *stat_data = (uint32_t *)dev.queue.enqueueMapBuffer(
+        stat_data_buffer, CL_TRUE, CL_MAP_READ, 0,
+        sizeof(uint32_t) * 4);
 
     cl::Buffer dedup_out_buffer =
         cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(int64_t) * MAX_LZW_CHUNKS,
@@ -414,9 +414,9 @@ int main(int argc, char *argv[]) {
             done == 1) {
             compression_timer.start();
             compression_pipeline(
-                r_data, host_input, output_codes, chunk_indices,
-                output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
-                chunk_indices_buffer, out_packet_lengths_buffer,
+                r_data, host_input, chunk_indices,
+                stat_data, dev, lzw_input_buffer,
+                chunk_indices_buffer, stat_data_buffer,
                 dedup_out_data, dedup_out_buffer,
                 bit_packed_data, bit_packed_data_buffer, chunk_size);
             compression_timer.stop();
@@ -431,10 +431,10 @@ int main(int argc, char *argv[]) {
 
     fclose(r_data->fptr_write);
     dev.queue.enqueueUnmapMemObject(lzw_input_buffer, host_input);
-    dev.queue.enqueueUnmapMemObject(lzw_output_buffer, output_codes);
+    /* dev.queue.enqueueUnmapMemObject(lzw_output_buffer, output_codes); */
     dev.queue.enqueueUnmapMemObject(chunk_indices_buffer, chunk_indices);
-    dev.queue.enqueueUnmapMemObject(out_packet_lengths_buffer,
-                                    output_code_lengths);
+    dev.queue.enqueueUnmapMemObject(stat_data_buffer,
+                                    stat_data);
     dev.queue.finish();
 
     free(r_data->pipeline_buffer);

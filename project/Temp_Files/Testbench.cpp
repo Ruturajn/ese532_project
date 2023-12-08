@@ -361,20 +361,17 @@ int main() {
 
         std::copy(vect.begin(), vect.end(), chunk_indices + 1);
 
-        uint32_t out_packet_lengths[20];
-//        int32_t dedup_out[20] = {-1, 22, -1, -1, 44, -1, -1, -1,
-//        		-1, 22, -1, -1, 44, -1, -1, -1,
-//	    		-1, 22, -1, -1};
+        uint32_t stat_data[4];
         int64_t dedup_out[20] = {-1, -1, -1, -1, -1,
                                  -1, -1, -1, -1, -1,
                                  -1, -1, -1, -1, -1,
                                  -1, -1, -1, -1, -1};
 
-        lzw(file_data, data, lzw_codes, chunk_indices, out_packet_lengths, dedup_out);
+        lzw(file_data, data, chunk_indices, stat_data, dedup_out);
 
         uint32_t *lzw_codes_ptr = lzw_codes;
 
-	    if (out_packet_lengths[0] & 0x1) {
+	    if (stat_data[0] & 0x1) {
 	    	cout << "TEST FAILED!!" << endl;
 	    	cout << "FAILED TO INSERT INTO ASSOC MEM!!\n";
 	    	exit(EXIT_FAILURE);
@@ -396,21 +393,21 @@ int main() {
 
             std::vector<int> output_code = encoding(s);
 
-            if (out_packet_lengths[i] != output_code.size()) {
-                cout << "TEST FAILED!!" << endl;
-                cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
-                cout << out_packet_lengths[i] << "|" << output_code.size()
-                     << "at i = " << i << endl;
-                // exit(EXIT_FAILURE);
-            }
+            // if (out_packet_lengths[i] != output_code.size()) {
+            //     cout << "TEST FAILED!!" << endl;
+            //     cout << "FAILURE MISMATCHED PACKET LENGTH!!" << endl;
+            //     cout << out_packet_lengths[i] << "|" << output_code.size()
+            //          << "at i = " << i << endl;
+            //     // exit(EXIT_FAILURE);
+            // }
 
-            for (int j = 0; j < output_code.size(); j++) {
-                if (output_code[j] != lzw_codes_ptr[j]) {
-                    cout << "FAILURE!!" << endl;
-                    cout << output_code[j] << "|" << lzw_codes_ptr[j]
-                         << " at j = " << j << " and i = " << i << endl;
-                }
-            }
+            // for (int j = 0; j < output_code.size(); j++) {
+            //     if (output_code[j] != lzw_codes_ptr[j]) {
+            //         cout << "FAILURE!!" << endl;
+            //         cout << output_code[j] << "|" << lzw_codes_ptr[j]
+            //              << " at j = " << j << " and i = " << i << endl;
+            //     }
+            // }
 
             if (dedup_out[i - 1] == -1) {
                 packet_len = ((output_code.size() * 13) / 8);
@@ -427,7 +424,7 @@ int main() {
                 final_data.push_back({{header, -1}, NULL});
             }
 
-            lzw_codes_ptr += out_packet_lengths[i];
+            // lzw_codes_ptr += out_packet_lengths[i];
         }
 
         for (auto it : final_data) {
@@ -442,7 +439,7 @@ int main() {
         }
 
 
-        fwrite(data, sizeof(unsigned char) * (out_packet_lengths[0] >> 1), 1, fptr_write_2);
+        fwrite(data, sizeof(unsigned char) * (stat_data[0] >> 1), 1, fptr_write_2);
 
         file_sz -= 16384;
 

@@ -316,6 +316,7 @@ static void compute_lzw(unsigned char *input, uint32_t *lzw_codes,
     // make sure the memories are clear
 LOOP1:
     for (int i = 0; i < CAPACITY; i++) {
+#pragma HLS UNROLL factor=512
         hash_table[i][0] = 0;
         hash_table[i][1] = 0;
     }
@@ -323,6 +324,7 @@ LOOP1:
 
 LOOP2:
     for (int i = 0; i < 512; i++) {
+#pragma HLS UNROLL
         my_assoc_mem.upper_key_mem[i] = 0;
         my_assoc_mem.middle_key_mem[i] = 0;
         my_assoc_mem.lower_key_mem[i] = 0;
@@ -607,20 +609,19 @@ void create_packet(const int out_packet_length, uint32_t* out_packet,
 
 void lzw(unsigned char input[BUFFER_LEN],
          unsigned char bit_packed_data[MAX_OUTPUT_CODE_SIZE * 4],
-         uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE],
          uint32_t chunk_indices[MAX_ITERATIONS],
-         uint32_t out_packet_lengths[MAX_ITERATIONS],
+         uint32_t stat_data[4],
          int64_t dedup_out[MAX_ITERATIONS]) {
 
 #pragma HLS INTERFACE m_axi port=input depth=16384 bundle=p0
 #pragma HLS INTERFACE m_axi port=bit_packed_data depth=163840 bundle=p1
-#pragma HLS INTERFACE m_axi port=lzw_codes depth=40960 bundle=p0
 #pragma HLS INTERFACE m_axi port=chunk_indices depth=20 bundle=p0
-#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=20 bundle=p1
+#pragma HLS INTERFACE m_axi port=stat_data depth=4 bundle=p1
 #pragma HLS INTERFACE m_axi port=dedup_out depth=20 bundle=p1
 
     uint32_t temp_lzw_codes[MAX_OUTPUT_CODE_SIZE] = {0};
     uint32_t temp_chunk_indices[MAX_ITERATIONS] = {0};
+    uint32_t out_packet_lengths[MAX_ITERATIONS] = {0};
     unsigned char temp_input[BUFFER_LEN] = {0};
 
 #pragma HLS array_partition variable=temp_lzw_codes block factor=5 dim=1
@@ -697,9 +698,9 @@ void lzw(unsigned char input[BUFFER_LEN],
     }
 
     memcpy(bit_packed_data, data, MAX_OUTPUT_CODE_SIZE * 4 * sizeof(unsigned char));
-    memcpy(lzw_codes, temp_lzw_codes, MAX_OUTPUT_CODE_SIZE * sizeof(uint32_t));
+    // memcpy(lzw_codes, temp_lzw_codes, MAX_OUTPUT_CODE_SIZE * sizeof(uint32_t));
 
     // The first element of the out_packet_lengths is going to signify
     // failure to insert into the associative memory.
-    out_packet_lengths[0] = (bit_pack_offset << 1) | generic_info[INFO_FAILURE];
+    stat_data[0] = (bit_pack_offset << 1) | generic_info[INFO_FAILURE];
 }
