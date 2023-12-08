@@ -178,11 +178,11 @@ static void compression_pipeline() {
 
     while (true) {
 
-        if (done_flag.load())
-            break;
-
         std::unique_lock<mutex> lk(m);
         cv.wait(lk, []{ return ready; });
+
+        if (done_flag.load())
+            break;
 
         cout << "In worker thread lock acquired!!" << endl;
 
@@ -294,6 +294,7 @@ static void compression_pipeline() {
 
         //     output_codes_ptr += output_code_lengths[i];
         // }
+
         total_time.stop();
 
         cout << "Bit packed data: " << bit_packed_data[0] << endl;

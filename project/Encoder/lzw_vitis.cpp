@@ -14,8 +14,7 @@
 #define BUFFER_LEN 16384
 #define MAX_ITERATIONS 20
 #define MAX_OUTPUT_CODE_SIZE 40960
-#define CODE_LENGTH 13
-#define MAX_BIT_PACKET_DATA (MAX_OUTPUT_CODE_SIZE * 4)
+
 #define SEED_MURMUR 524057
 #define SEED_CRAP 75768593
 
@@ -132,11 +131,6 @@ unsigned int my_hash(unsigned long key) {
     return hash_1 & (CAPACITY - 1);
 }
 
-// 17179869184
-//  4328521728
-//        2671
-//------------
-//        3583
 void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
                         bool *hit, unsigned int *result) {
     key &= 0x1FFFFF; // make sure key is only 21 bits
@@ -144,11 +138,6 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
     unsigned int hash_val = my_hash(key);
 
     unsigned long lookup = hash_table[hash_val][0];
-
-//    if (lookup == 0) {
-//    	*is_exists = 0;
-//    	return;
-//    }
 
     // [valid][value][key]
     unsigned long stored_key = lookup & 0x1FFFFF;       // stored key is 21 bits
@@ -164,13 +153,6 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
 
     lookup = hash_table[hash_val][1];
 
-    //*is_exists = (lookup && 1);
-
-//    if (lookup == 0) {
-//    	*is_exists = 0;
-//    	return;
-//    }
-
     // [valid][value][key]
     stored_key = lookup & 0x1FFFFF;       // stored key is 21 bits
     value = (lookup >> 21) & 0x1FFF;      // value is 13 bits
@@ -178,12 +160,10 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
     if (valid && (key == stored_key)) {
         *hit = 1;
         *result = value;
-        //*is_exists = 1;
         return;
     }
     *hit = 0;
     *result = 0;
-    //*is_exists = (lookup && 1);
 }
 
 void inline hash_insert(unsigned long (*hash_table)[2], unsigned int key,
@@ -297,7 +277,6 @@ void inline insert(unsigned long (*hash_table)[2], assoc_mem *mem,
 
 void inline lookup(unsigned long (*hash_table)[2], assoc_mem *mem,
                    unsigned int key, bool *hit, unsigned int *result) {
-	//bool is_exists = 0;
     hash_lookup(hash_table, key, hit, result);
     if (!*hit) {
         assoc_lookup(mem, key, hit, result);
@@ -312,18 +291,19 @@ static void compute_lzw(unsigned char *input, uint32_t *lzw_codes,
     assoc_mem my_assoc_mem;
 
 #pragma HLS array_partition variable=hash_table complete dim=2
+//#pragma HLS array_partition variable=my_assoc_mem.upper_key_mem complete dim=1
+//#pragma HLS array_partition variable=my_assoc_mem.middle_key_mem complete dim=1
+//#pragma HLS array_partition variable=my_assoc_mem.lower_key_mem complete dim=1
 
     // make sure the memories are clear
-LOOP1:
-    for (int i = 0; i < CAPACITY; i++) {
+    LOOP1: for (int i = 0; i < CAPACITY; i++) {
 #pragma HLS UNROLL factor=512
         hash_table[i][0] = 0;
         hash_table[i][1] = 0;
     }
     my_assoc_mem.fill = 0;
 
-LOOP2:
-    for (int i = 0; i < 512; i++) {
+    LOOP2: for (int i = 0; i < 512; i++) {
 #pragma HLS UNROLL
         my_assoc_mem.upper_key_mem[i] = 0;
         my_assoc_mem.middle_key_mem[i] = 0;
@@ -339,15 +319,13 @@ LOOP2:
     unsigned char next_char = 0;
     uint64_t j = offset;
 
-LOOP3:
-    for (int i = start_idx; i < end_idx - 1; i++) {
+    LOOP3: for (int i = start_idx; i < end_idx - 1; i++) {
         next_char = input[i + 1];
         bool hit = 0;
         lookup(hash_table, &my_assoc_mem, ((prefix_code << 8) + next_char), &hit,
                &code);
         if (!hit) {
             lzw_codes[j] = prefix_code;
-
             bool collision = 0;
             insert(hash_table, &my_assoc_mem, ((prefix_code << 8) + next_char),
                    next_code, &collision);
@@ -368,260 +346,18 @@ LOOP3:
         generic_info[INFO_FAILURE] = failure;
 }
 
-void create_packet(const int out_packet_length, uint32_t* out_packet,
-                   unsigned char *data, const int packet_len) {
-    uint32_t data_idx = 0;
-    uint32_t current_val = 0;
-    int bits_left = 0;
-    int current_val_bits_left = 0;
-
-    for (int i = 0; i < out_packet_length; i++) {
-        current_val = out_packet[i];
-        current_val_bits_left = CODE_LENGTH;
-
-        if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] = (current_val >> 5) & 0xFF;
-            bits_left = 0;
-            current_val_bits_left = 5;
-            data_idx += 1;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 5) {
-            if (data_idx < packet_len) {
-                data[data_idx] = (current_val & 0x1F) << 3;
-                bits_left = 3;
-                current_val_bits_left = 0;
-                continue;
-            } else
-                break;
-        }
-
-        if (bits_left == 3 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 10) & 0x07);
-            bits_left = 0;
-            data_idx += 1;
-            current_val_bits_left = 10;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 10) {
-            if (data_idx < packet_len) {
-                data[data_idx] = ((current_val >> 2) & 0xFF);
-                bits_left = 0;
-                data_idx += 1;
-                current_val_bits_left = 2;
-            } else
-                break;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 2) {
-            if (data_idx < packet_len) {
-                data[data_idx] = (current_val & 0x03) << 6;
-                bits_left = 6;
-                current_val_bits_left = 0;
-                continue;
-            } else
-                break;
-        }
-
-        if (bits_left == 6 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 7) & 0x3F);
-            bits_left = 0;
-            data_idx += 1;
-            current_val_bits_left = 7;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 7) {
-            if (data_idx < packet_len) {
-                data[data_idx] = (current_val & 0x7F) << 1;
-                bits_left = 1;
-                current_val_bits_left = 0;
-                continue;
-            } else
-                break;
-        }
-
-        if (bits_left == 1 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 12) & 0x1);
-            bits_left = 0;
-            data_idx += 1;
-            current_val_bits_left = 12;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 12) {
-            if (data_idx < packet_len) {
-                data[data_idx] = ((current_val >> 4) & 0xFF);
-                bits_left = 0;
-                data_idx += 1;
-                current_val_bits_left = 4;
-            } else
-                break;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 4) {
-            if (data_idx < packet_len) {
-                data[data_idx] = (current_val & 0x0F) << 4;
-                bits_left = 4;
-                current_val_bits_left = 0;
-                continue;
-            } else
-                break;
-        }
-
-        if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 9) & 0x0F);
-            data_idx += 1;
-            bits_left = 0;
-            current_val_bits_left = 9;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 9) {
-            if (data_idx < packet_len) {
-                data[data_idx] = ((current_val >> 1) & 0xFF);
-                bits_left = 0;
-                data_idx += 1;
-                current_val_bits_left = 1;
-            } else
-                break;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 1) {
-            data[data_idx] = (current_val & 0x01) << 7;
-            bits_left = 7;
-            current_val_bits_left = 0;
-            continue;
-        }
-
-        if (bits_left == 7 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 6) & 0x7F);
-            bits_left = 0;
-            current_val_bits_left = 6;
-            data_idx += 1;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 6) {
-            if (data_idx < packet_len) {
-                data[data_idx] = ((current_val) & 0x3F) << 2;
-                bits_left = 2;
-                current_val_bits_left = 0;
-                continue;
-            } else
-                break;
-        }
-
-        if (bits_left == 2 && current_val_bits_left == CODE_LENGTH) {
-            if (data_idx < packet_len) {
-                data[data_idx] |= ((current_val >> 11) & 0x03);
-                bits_left = 0;
-                data_idx += 1;
-                current_val_bits_left = 11;
-            } else
-                break;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 11) {
-            if (data_idx < packet_len) {
-                data[data_idx] = ((current_val >> 3) & 0xFF);
-                bits_left = 0;
-                data_idx += 1;
-                current_val_bits_left = 3;
-            } else
-                break;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 3) {
-            if (data_idx < packet_len) {
-                data[data_idx] = ((current_val) & 0x07) << 5;
-                bits_left = 5;
-                current_val_bits_left = 0;
-                continue;
-            } else
-                break;
-        }
-
-        if (bits_left == 5 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 8) & 0x1F);
-            bits_left = 0;
-            current_val_bits_left = 8;
-            data_idx += 1;
-        }
-
-        if (bits_left == 0 && current_val_bits_left == 8) {
-            if (data_idx < packet_len) {
-                data[data_idx] = (current_val & 0xFF);
-                bits_left = 0;
-                current_val_bits_left = 0;
-                data_idx += 1;
-                continue;
-            } else
-                break;
-        }
-    }
-}
-
-// void create_packet(const int out_packet_length, uint32_t* out_packet,
-//                    unsigned char *data, const int packet_len) {
-// 
-//     uint32_t data_idx = 0;
-//     uint16_t current_val = 0;
-//     int bits_left = 0;
-//     int current_val_bits_left = 0;
-//     for (uint32_t i = 0; i < out_packet_length; i++) {
-//         current_val = out_packet[i];
-//         current_val_bits_left = CODE_LENGTH;
-// 
-//         if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
-//             data[data_idx] = (current_val >> 4) & 0xFF;
-//             bits_left = 0;
-//             current_val_bits_left = 4;
-//             data_idx += 1;
-//         }
-// 
-//         if (bits_left == 0 && current_val_bits_left == 4) {
-//             if (data_idx < packet_len) {
-//                 data[data_idx] = (current_val & 0x0F) << 4;
-//                 bits_left = 4;
-//                 current_val_bits_left = 0;
-//                 continue;
-//             } else
-//                 break;
-//         }
-// 
-//         if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
-//             data[data_idx] |= ((current_val >> 8) & 0x0F);
-//             bits_left = 0;
-//             data_idx += 1;
-//             current_val_bits_left = 8;
-//         }
-// 
-//         if (bits_left == 0 && current_val_bits_left == 8) {
-//             if (data_idx < packet_len) {
-//                 data[data_idx] = ((current_val)&0xFF);
-//                 bits_left = 0;
-//                 data_idx += 1;
-//                 current_val_bits_left = 0;
-//                 continue;
-//             } else
-//                 break;
-//         }
-//     }
-// 
-// }
-
 void lzw(unsigned char input[BUFFER_LEN],
-         unsigned char bit_packed_data[MAX_OUTPUT_CODE_SIZE * 4],
+         uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE],
          uint32_t chunk_indices[MAX_ITERATIONS],
-         uint32_t stat_data[4],
-         int64_t dedup_out[MAX_ITERATIONS]) {
+         uint32_t out_packet_lengths[MAX_ITERATIONS]) {
 
 #pragma HLS INTERFACE m_axi port=input depth=16384 bundle=p0
-#pragma HLS INTERFACE m_axi port=bit_packed_data depth=163840 bundle=p1
+#pragma HLS INTERFACE m_axi port=lzw_codes depth=40960 bundle=p1
 #pragma HLS INTERFACE m_axi port=chunk_indices depth=20 bundle=p0
-#pragma HLS INTERFACE m_axi port=stat_data depth=4 bundle=p1
-#pragma HLS INTERFACE m_axi port=dedup_out depth=20 bundle=p1
+#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=20 bundle=p1
 
     uint32_t temp_lzw_codes[MAX_OUTPUT_CODE_SIZE] = {0};
     uint32_t temp_chunk_indices[MAX_ITERATIONS] = {0};
-    uint32_t out_packet_lengths[MAX_ITERATIONS] = {0};
     unsigned char temp_input[BUFFER_LEN] = {0};
 
 #pragma HLS array_partition variable=temp_lzw_codes block factor=5 dim=1
@@ -629,6 +365,7 @@ void lzw(unsigned char input[BUFFER_LEN],
 #pragma HLS array_partition variable=temp_input block factor=16 dim=1
 
     LOOP4: for (int i = 0; i < MAX_ITERATIONS; i++) {
+#pragma HLS UNROLL
         temp_chunk_indices[i] = chunk_indices[i];
     }
 
@@ -649,13 +386,8 @@ void lzw(unsigned char input[BUFFER_LEN],
     generic_info[INFO_OUT_PACKET_LENGTH] = 0;
 
     uint64_t offset = 0;
-    uint64_t bit_pack_offset = 0;
 
     const int bound = chunk_indices_len - 1;
-
-    unsigned char data[MAX_OUTPUT_CODE_SIZE * 4] = {0};
-    int packet_len = 0;
-    uint32_t header = 0;
 
     LOOP5: for (int i = 1; i <= MAX_ITERATIONS; i++) {
 #pragma HLS UNROLL factor=2
@@ -664,43 +396,13 @@ void lzw(unsigned char input[BUFFER_LEN],
             generic_info[INFO_END_IDX] = temp_chunk_indices[i + 1];
             compute_lzw(temp_input, temp_lzw_codes, generic_info, offset);
             out_packet_lengths[i] = generic_info[INFO_OUT_PACKET_LENGTH];
-
-            if (dedup_out[i - 1] == -1) {
-                packet_len = ((out_packet_lengths[i] * CODE_LENGTH) / 8);
-                packet_len =
-                    ((out_packet_lengths[i] & 0x7) != 0) ? packet_len + 1 : packet_len;
-                header = packet_len << 1;
-
-                // 0x00 00 0F 2A
-                data[bit_pack_offset] = (header & 0xFF);
-                data[bit_pack_offset + 1] = ((header >> 8) & 0xFF);
-                data[bit_pack_offset + 2] = ((header >> 16) & 0xFF);
-                data[bit_pack_offset + 3] = ((header >> 24) & 0xFF);
-
-                bit_pack_offset += 4;
-
-                create_packet(out_packet_lengths[i], temp_lzw_codes + offset,
-                              data + bit_pack_offset, packet_len);
-                bit_pack_offset += packet_len;
-
-            } else {
-                header = (dedup_out[i - 1] << 1) | 1;
-
-                data[bit_pack_offset] = (header & 0xFF);
-                data[bit_pack_offset + 1] = ((header >> 8) & 0xFF);
-                data[bit_pack_offset + 2] = ((header >> 16) & 0xFF);
-                data[bit_pack_offset + 3] = ((header >> 24) & 0xFF);
-
-                bit_pack_offset += 4;
-            }
             offset += generic_info[INFO_OUT_PACKET_LENGTH];
         }
     }
 
-    memcpy(bit_packed_data, data, MAX_OUTPUT_CODE_SIZE * 4 * sizeof(unsigned char));
-    // memcpy(lzw_codes, temp_lzw_codes, MAX_OUTPUT_CODE_SIZE * sizeof(uint32_t));
+    memcpy(lzw_codes, temp_lzw_codes, MAX_OUTPUT_CODE_SIZE * sizeof(uint32_t));
 
     // The first element of the out_packet_lengths is going to signify
     // failure to insert into the associative memory.
-    stat_data[0] = (bit_pack_offset << 1) | generic_info[INFO_FAILURE];
+    out_packet_lengths[0] = generic_info[INFO_FAILURE];
 }

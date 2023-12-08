@@ -103,10 +103,81 @@ static unsigned char *create_packet(int32_t chunk_idx,
         current_val_bits_left = CODE_LENGTH;
 
         if (bits_left == 0 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] = (current_val >> 4) & 0xFF;
+            data[data_idx] = (current_val >> 5) & 0xFF;
             bits_left = 0;
-            current_val_bits_left = 4;
+            current_val_bits_left = 5;
             data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 5) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x1F) << 3;
+                bits_left = 3;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 3 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 10) & 0x07);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 10;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 10) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 2) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 2;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 2) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x03) << 6;
+                bits_left = 6;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 6 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 7) & 0x3F);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 7;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 7) {
+            if (data_idx < packet_len) {
+                data[data_idx] = (current_val & 0x7F) << 1;
+                bits_left = 1;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 1 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 12) & 0x1);
+            bits_left = 0;
+            data_idx += 1;
+            current_val_bits_left = 12;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 12) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 4) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 4;
+            } else
+                break;
         }
 
         if (bits_left == 0 && current_val_bits_left == 4) {
@@ -120,18 +191,89 @@ static unsigned char *create_packet(int32_t chunk_idx,
         }
 
         if (bits_left == 4 && current_val_bits_left == CODE_LENGTH) {
-            data[data_idx] |= ((current_val >> 8) & 0x0F);
-            bits_left = 0;
+            data[data_idx] |= ((current_val >> 9) & 0x0F);
             data_idx += 1;
+            bits_left = 0;
+            current_val_bits_left = 9;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 9) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 1) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 1;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 1) {
+            data[data_idx] = (current_val & 0x01) << 7;
+            bits_left = 7;
+            current_val_bits_left = 0;
+            continue;
+        }
+
+        if (bits_left == 7 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 6) & 0x7F);
+            bits_left = 0;
+            current_val_bits_left = 6;
+            data_idx += 1;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 6) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val) & 0x3F) << 2;
+                bits_left = 2;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 2 && current_val_bits_left == CODE_LENGTH) {
+            if (data_idx < packet_len) {
+                data[data_idx] |= ((current_val >> 11) & 0x03);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 11;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 11) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val >> 3) & 0xFF);
+                bits_left = 0;
+                data_idx += 1;
+                current_val_bits_left = 3;
+            } else
+                break;
+        }
+
+        if (bits_left == 0 && current_val_bits_left == 3) {
+            if (data_idx < packet_len) {
+                data[data_idx] = ((current_val) & 0x07) << 5;
+                bits_left = 5;
+                current_val_bits_left = 0;
+                continue;
+            } else
+                break;
+        }
+
+        if (bits_left == 5 && current_val_bits_left == CODE_LENGTH) {
+            data[data_idx] |= ((current_val >> 8) & 0x1F);
+            bits_left = 0;
             current_val_bits_left = 8;
+            data_idx += 1;
         }
 
         if (bits_left == 0 && current_val_bits_left == 8) {
             if (data_idx < packet_len) {
-                data[data_idx] = ((current_val)&0xFF);
+                data[data_idx] = (current_val & 0xFF);
                 bits_left = 0;
-                data_idx += 1;
                 current_val_bits_left = 0;
+                data_idx += 1;
                 continue;
             } else
                 break;
@@ -141,19 +283,17 @@ static unsigned char *create_packet(int32_t chunk_idx,
 }
 
 static void compression_pipeline(
-    RawData *r_data, unsigned char *host_input,
-    uint32_t *chunk_indices, uint32_t *stat_data, CLDevice dev,
-    cl::Buffer lzw_input_buffer,
-    cl::Buffer chunk_indices_buffer, cl::Buffer stat_data_buffer,
-    int64_t* dedup_out_data, cl::Buffer dedup_out_buffer,
-    unsigned char *bit_packed_data, cl::Buffer bit_packed_data_buffer,
+    RawData *r_data, unsigned char *host_input, uint32_t *output_codes,
+    uint32_t *chunk_indices, uint32_t *output_code_lengths, CLDevice dev,
+    cl::Buffer lzw_input_buffer, cl::Buffer lzw_output_buffer,
+    cl::Buffer chunk_indices_buffer, cl::Buffer out_packet_lengths_buffer,
     unsigned int chunk_size) {
 
     vector<uint32_t> vect;
     string sha_fingerprint;
     int64_t chunk_idx = 0;
-    // uint32_t packet_len = 0;
-    // uint32_t header = 0;
+    uint32_t packet_len = 0;
+    uint32_t header = 0;
     vector<int64_t> dedup_out;
     vector<pair<pair<int, int>, unsigned char *>> final_data;
 
@@ -199,16 +339,12 @@ static void compression_pipeline(
     // RUN LZW
     time_lzw.start();
 
-    std::copy(dedup_out.begin(), dedup_out.end(), dedup_out_data);
-
     dev.kernel.setArg(0, lzw_input_buffer);
-    dev.kernel.setArg(1, bit_packed_data_buffer);
-    /* dev.kernel.setArg(2, lzw_output_buffer); */
+    dev.kernel.setArg(1, lzw_output_buffer);
     dev.kernel.setArg(2, chunk_indices_buffer);
-    dev.kernel.setArg(3, stat_data_buffer);
-    dev.kernel.setArg(4, dedup_out_buffer);
+    dev.kernel.setArg(3, out_packet_lengths_buffer);
 
-    dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer, dedup_out_buffer},
+    dev.queue.enqueueMigrateMemObjects({lzw_input_buffer, chunk_indices_buffer},
                                        0 /* 0 means from host*/, NULL,
                                        &write_event[0]);
 
@@ -221,56 +357,56 @@ static void compression_pipeline(
     /* compute_event[0].getProfilingInfo<CL_PROFILING_COMMAND_START>(); */
 
     dev.queue.enqueueMigrateMemObjects(
-        {bit_packed_data_buffer, stat_data_buffer},
+        {lzw_output_buffer, out_packet_lengths_buffer},
         CL_MIGRATE_MEM_OBJECT_HOST, &compute_event, &done_event[0]);
     clWaitForEvents(1, (const cl_event *)&done_event[0]);
     time_lzw.stop();
 
-    if (stat_data[0] & 0x1) {
+    if (output_code_lengths[0] & 0x1) {
         printf("FAILED TO INSERT INTO ASSOC MEM!!\n");
         exit(EXIT_FAILURE);
     }
 
-    // uint32_t *output_codes_ptr = output_codes;
+    uint32_t *output_codes_ptr = output_codes;
 
-    // for (int i = 1; i < (int)chunk_indices[0]; i++) {
-    //     if (dedup_out[i - 1] == -1) {
-    //         packet_len = ((output_code_lengths[i] * 12) / 8);
-    //         packet_len =
-    //             (output_code_lengths[i] % 2 != 0) ? packet_len + 1 : packet_len;
+    for (int i = 1; i < (int)chunk_indices[0]; i++) {
+        if (dedup_out[i - 1] == -1) {
+            packet_len = ((output_code_lengths[i] * 13) / 8);
+            packet_len =
+                ((output_code_lengths[i] & 0x7) != 0) ? packet_len + 1 : packet_len;
 
-    //         unsigned char *data_packet =
-    //             create_packet(chunk_idx, output_code_lengths[i],
-    //                           output_codes_ptr, packet_len);
+            unsigned char *data_packet =
+                create_packet(chunk_idx, output_code_lengths[i],
+                              output_codes_ptr, packet_len);
 
-    //         header = packet_len << 1;
-    //         final_data.push_back({{header, packet_len}, data_packet});
-    //         lzw_bytes += 4;
+            header = packet_len << 1;
+            final_data.push_back({{header, packet_len}, data_packet});
+            lzw_bytes += 4;
 
-    //         lzw_bytes += packet_len;
+            lzw_bytes += packet_len;
 
-    //     } else {
-    //         header = (dedup_out[i - 1] << 1) | 1;
-    //         final_data.push_back({{header, -1}, NULL});
-    //         dedup_bytes += 4;
-    //     }
+        } else {
+            header = (dedup_out[i - 1] << 1) | 1;
+            final_data.push_back({{header, -1}, NULL});
+            dedup_bytes += 4;
+        }
 
-    //     output_codes_ptr += output_code_lengths[i];
-    // }
+        output_codes_ptr += output_code_lengths[i];
+    }
     total_time.stop();
 
-    fwrite(bit_packed_data, sizeof(unsigned char) * (stat_data[0] >> 1), 1, r_data->fptr_write);
+    // fwrite(bit_packed_data, sizeof(unsigned char) * (stat_data[0] >> 1), 1, r_data->fptr_write);
 
-    // for (auto it : final_data) {
-    //     if (it.second != NULL) {
-    //         fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
-    //         fwrite(it.second, sizeof(unsigned char), it.first.second,
-    //                r_data->fptr_write);
-    //         free(it.second);
-    //     } else {
-    //         fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
-    //     }
-    // }
+    for (auto it : final_data) {
+        if (it.second != NULL) {
+            fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
+            fwrite(it.second, sizeof(unsigned char), it.first.second,
+                   r_data->fptr_write);
+            free(it.second);
+        } else {
+            fwrite(&it.first.first, sizeof(uint32_t), 1, r_data->fptr_write);
+        }
+    }
 
     /* cout << "Total Kernel Execution Time using Profiling Info: " << total_time_2 */
     /*      << " ms." << endl; */
@@ -349,12 +485,12 @@ int main(int argc, char *argv[]) {
         lzw_input_buffer, CL_TRUE, CL_MAP_WRITE, 0,
         sizeof(unsigned char) * NUM_PACKETS * blocksize);
 
-    /* cl::Buffer lzw_output_buffer = */
-    /*     cl::Buffer(context, CL_MEM_WRITE_ONLY, */
-    /*                sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err); */
-    /* uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer( */
-    /*     lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0, */
-    /*     sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE); */
+    cl::Buffer lzw_output_buffer =
+        cl::Buffer(context, CL_MEM_WRITE_ONLY,
+                   sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE, NULL, &err);
+    uint32_t *output_codes = (uint32_t *)dev.queue.enqueueMapBuffer(
+        lzw_output_buffer, CL_TRUE, CL_MAP_READ, 0,
+        sizeof(uint32_t) * MAX_OUTPUT_BUF_SIZE);
 
     cl::Buffer chunk_indices_buffer =
         cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * MAX_LZW_CHUNKS,
@@ -363,26 +499,12 @@ int main(int argc, char *argv[]) {
         chunk_indices_buffer, CL_TRUE, CL_MAP_WRITE, 0,
         sizeof(uint32_t) * MAX_LZW_CHUNKS);
 
-    cl::Buffer stat_data_buffer =
+    cl::Buffer out_packet_lengths_buffer =
         cl::Buffer(context, CL_MEM_WRITE_ONLY,
-                   sizeof(uint32_t) * 4, NULL, &err);
-    uint32_t *stat_data = (uint32_t *)dev.queue.enqueueMapBuffer(
-        stat_data_buffer, CL_TRUE, CL_MAP_READ, 0,
-        sizeof(uint32_t) * 4);
-
-    cl::Buffer dedup_out_buffer =
-        cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(int64_t) * MAX_LZW_CHUNKS,
-                   NULL, &err);
-    int64_t *dedup_out_data = (int64_t *)dev.queue.enqueueMapBuffer(
-        dedup_out_buffer, CL_TRUE, CL_MAP_WRITE, 0,
-        sizeof(int64_t) * MAX_LZW_CHUNKS);
-
-    cl::Buffer bit_packed_data_buffer =
-        cl::Buffer(context, CL_MEM_WRITE_ONLY,
-                   sizeof(unsigned char) * MAX_OUTPUT_BUF_SIZE * 4, NULL, &err);
-    unsigned char *bit_packed_data = (unsigned char *)dev.queue.enqueueMapBuffer(
-        bit_packed_data_buffer, CL_TRUE, CL_MAP_READ, 0,
-        sizeof(unsigned char) * MAX_OUTPUT_BUF_SIZE * 4);
+                   sizeof(uint32_t) * MAX_LZW_CHUNKS, NULL, &err);
+    uint32_t *output_code_lengths = (uint32_t *)dev.queue.enqueueMapBuffer(
+        out_packet_lengths_buffer, CL_TRUE, CL_MAP_READ, 0,
+        sizeof(uint32_t) * MAX_LZW_CHUNKS);
 
     // Loop until last message
     while (!done) {
@@ -414,11 +536,9 @@ int main(int argc, char *argv[]) {
             done == 1) {
             compression_timer.start();
             compression_pipeline(
-                r_data, host_input, chunk_indices,
-                stat_data, dev, lzw_input_buffer,
-                chunk_indices_buffer, stat_data_buffer,
-                dedup_out_data, dedup_out_buffer,
-                bit_packed_data, bit_packed_data_buffer, chunk_size);
+                r_data, host_input, output_codes,chunk_indices,
+                output_code_lengths, dev, lzw_input_buffer, lzw_output_buffer,
+                chunk_indices_buffer, out_packet_lengths_buffer, chunk_size);
             compression_timer.stop();
             writer = 0;
             r_data->length_sum = 0;
@@ -431,10 +551,10 @@ int main(int argc, char *argv[]) {
 
     fclose(r_data->fptr_write);
     dev.queue.enqueueUnmapMemObject(lzw_input_buffer, host_input);
-    /* dev.queue.enqueueUnmapMemObject(lzw_output_buffer, output_codes); */
+    dev.queue.enqueueUnmapMemObject(lzw_output_buffer, output_codes);
     dev.queue.enqueueUnmapMemObject(chunk_indices_buffer, chunk_indices);
-    dev.queue.enqueueUnmapMemObject(stat_data_buffer,
-                                    stat_data);
+    dev.queue.enqueueUnmapMemObject(out_packet_lengths_buffer,
+                                    output_code_lengths);
     dev.queue.finish();
 
     free(r_data->pipeline_buffer);
