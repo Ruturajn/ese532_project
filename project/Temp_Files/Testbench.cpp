@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unordered_map>
 #include <vector>
+#include <string.h>
 
 #define FILE_SIZE 16383
 #define MAX_LZW_CODES (4096 * 20)
@@ -68,7 +69,12 @@ int main() {
 
     unsigned char file_data[16384];
     uint32_t chunk_indices[20];
-    uint32_t lzw_codes[40960];
+    uint32_t *lzw_codes = (uint32_t *)calloc(40960, sizeof(uint32_t));
+    memset(lzw_codes, 23, 40960 * sizeof(uint32_t));
+    if (lzw_codes == NULL) {
+    	cout << "Unable to allocate memory for lzw codes!" << endl;
+    	exit(EXIT_FAILURE);
+    }
     uint32_t out_packet_lengths[20];
     unsigned int count = 0;
     bool fail_stat = false;
