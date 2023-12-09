@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <hls_stream.h>
 
 #define CAPACITY                                                               \
     16384 // hash output is 15 bits, and we have 1 entry per bucket, so capacity
@@ -285,8 +286,8 @@ void inline lookup(unsigned long (*hash_table)[2], assoc_mem *mem,
     }
 }
 
-static void compute_lzw(unsigned char *input, uint32_t *lzw_codes,
-                        uint32_t generic_info[4], uint64_t offset) {
+static void compute_lzw(hls::stream<unsigned char >&input_stream, hls::stream<uint32_t> &out_stream,
+                        uint32_t generic_info[4]) {
 
     // create hash table and assoc mem
     unsigned long hash_table[CAPACITY][2];
@@ -316,18 +317,21 @@ static void compute_lzw(unsigned char *input, uint32_t *lzw_codes,
     uint8_t failure = 0;
     uint32_t start_idx = generic_info[INFO_START_IDX];
     uint32_t end_idx = generic_info[INFO_END_IDX];
-    unsigned int prefix_code = (unsigned int)input[start_idx];
+    // unsigned int prefix_code = (unsigned int)input[start_idx];
+    unsigned int prefix_code = input_stream.read();
     unsigned int code = 0;
     unsigned char next_char = 0;
-    uint64_t j = offset;
+    uint64_t j = 0;
 
     LOOP3: for (int i = start_idx; i < end_idx - 1; i++) {
-        next_char = input[i + 1];
+        // next_char = input[i + 1];
+    	next_char = input_stream.read();
         bool hit = 0;
         lookup(hash_table, &my_assoc_mem, ((prefix_code << 8) + next_char), &hit,
                &code);
         if (!hit) {
-            lzw_codes[j] = prefix_code;
+            // lzw_codes[j] = prefix_code;
+        	out_stream.write(prefix_code);
             bool collision = 0;
             insert(hash_table, &my_assoc_mem, ((prefix_code << 8) + next_char),
                    next_code, &collision);
@@ -342,45 +346,31 @@ static void compute_lzw(unsigned char *input, uint32_t *lzw_codes,
         }
     }
 
-    lzw_codes[j] = prefix_code;
-    generic_info[INFO_OUT_PACKET_LENGTH] = (j - offset) + 1;
+    // lzw_codes[j] = prefix_code;
+    out_stream.write(prefix_code);
+    generic_info[INFO_OUT_PACKET_LENGTH] = j + 1;
     if (failure)
         generic_info[INFO_FAILURE] = failure;
 }
 
-void lzw(unsigned char input[BUFFER_LEN],
-         uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE],
-         uint32_t chunk_indices[MAX_ITERATIONS],
-         uint32_t out_packet_lengths[MAX_ITERATIONS]) {
+static void store_data(hls::stream<uint32_t> &out_stream,
+					  uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE]) {
+	for (int i = 0; i < MAX_OUTPUT_CODE_SIZE; i++) {
+		lzw_codes[i] = out_stream.read();
+	}
+}
 
-#pragma HLS INTERFACE m_axi port=input depth=16384 bundle=p0
-#pragma HLS INTERFACE m_axi port=lzw_codes depth=40960 bundle=p1
-#pragma HLS INTERFACE m_axi port=chunk_indices depth=20 bundle=p0
-#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=20 bundle=p1
+static void load_data(unsigned char input[BUFFER_LEN],
+					   hls::stream<unsigned char> &input_stream) {
+	for (int i = 0; i < BUFFER_LEN; i++) {
+		input_stream.write(input[i]);
+	}
+}
 
-    uint32_t temp_lzw_codes[MAX_OUTPUT_CODE_SIZE] = {0};
-    uint32_t temp_chunk_indices[MAX_ITERATIONS] = {0};
-    unsigned char temp_input[BUFFER_LEN] = {0};
-
-#pragma HLS array_partition variable=temp_lzw_codes block factor=5 dim=1
-#pragma HLS array_partition variable=temp_chunk_indices block factor=10 dim=1
-//#pragma HLS array_partition variable=temp_input block factor=16 dim=1
-
-    LOOP4: for (int i = 0; i < MAX_ITERATIONS; i++) {
-#pragma HLS UNROLL
-        temp_chunk_indices[i] = chunk_indices[i];
-    }
-
-//    for (int i = 0; i < BUFFER_LEN; i++) {
-//#pragma HLS UNROLL
-//        temp_input[i] = input[i];
-//    }
-
-    // memcpy(temp_input, input, sizeof(unsigned char) * BUFFER_LEN);
-
-    // The first element in the chunk_indices array contains the size
-    // of the chunk_indices array.
-    uint32_t chunk_indices_len = chunk_indices[0];
+static void compute_data(hls::stream<unsigned char> &input_stream,
+						 hls::stream<uint32_t> &out_stream,
+						 uint32_t out_packet_lengths[MAX_ITERATIONS],
+						 uint32_t temp_chunk_indices[MAX_ITERATIONS]) {
 
     // This is an array that packs generic information for the LZW
     // function. The elements in the this array are as follows:
@@ -392,24 +382,68 @@ void lzw(unsigned char input[BUFFER_LEN],
     generic_info[INFO_FAILURE] = 0;
     generic_info[INFO_OUT_PACKET_LENGTH] = 0;
 
-    uint64_t offset = 0;
+
+    // The first element in the chunk_indices array contains the size
+    // of the chunk_indices array.
+    uint32_t chunk_indices_len = temp_chunk_indices[0];
+
+    // uint64_t offset = 0;
 
     const int bound = chunk_indices_len - 1;
 
-    LOOP5: for (int i = 1; i <= 10; i++) {
+    for (int i = 1; i <= MAX_ITERATIONS; i++) {
 #pragma HLS UNROLL factor=2
         if (i <= bound) {
             generic_info[INFO_START_IDX] = temp_chunk_indices[i];
             generic_info[INFO_END_IDX] = temp_chunk_indices[i + 1];
-            compute_lzw(input, temp_lzw_codes, generic_info, offset);
+            compute_lzw(input_stream, out_stream, generic_info);
             out_packet_lengths[i] = generic_info[INFO_OUT_PACKET_LENGTH];
-            offset += generic_info[INFO_OUT_PACKET_LENGTH];
+            //offset += generic_info[INFO_OUT_PACKET_LENGTH];
         }
     }
-
-    memcpy(lzw_codes, temp_lzw_codes, MAX_OUTPUT_CODE_SIZE * sizeof(uint32_t));
 
     // The first element of the out_packet_lengths is going to signify
     // failure to insert into the associative memory.
     out_packet_lengths[0] = generic_info[INFO_FAILURE];
 }
+
+static void perform_lzw(unsigned char input[BUFFER_LEN],
+						uint32_t temp_chunk_indices[MAX_ITERATIONS],
+						uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE],
+						uint32_t out_packet_lengths[MAX_ITERATIONS]) {
+
+
+	hls::stream<unsigned char> in_stream;
+	hls::stream<uint32_t> out_stream;
+
+#pragma HLS STREAM variable=in_stream depth=16384
+#pragma HLS STREAM variable=out_stream depth=16384
+
+#pragma HLS DATAFLOW
+	load_data(input, in_stream);
+	compute_data(in_stream, out_stream, out_packet_lengths, temp_chunk_indices);
+	store_data(out_stream, lzw_codes);
+}
+
+void lzw(unsigned char input[BUFFER_LEN],
+         uint32_t lzw_codes[MAX_OUTPUT_CODE_SIZE],
+         uint32_t chunk_indices[MAX_ITERATIONS],
+         uint32_t out_packet_lengths[MAX_ITERATIONS]) {
+
+#pragma HLS INTERFACE m_axi port=input depth=16384 bundle=p1
+#pragma HLS INTERFACE m_axi port=lzw_codes depth=40960 bundle=p0
+#pragma HLS INTERFACE m_axi port=chunk_indices depth=20 bundle=p1
+#pragma HLS INTERFACE m_axi port=out_packet_lengths depth=20 bundle=p1
+
+    uint32_t temp_chunk_indices[MAX_ITERATIONS] = {0};
+
+#pragma HLS array_partition variable=temp_chunk_indices block factor=10 dim=1
+
+    LOOP4: for (int i = 0; i < MAX_ITERATIONS; i++) {
+#pragma HLS UNROLL
+        temp_chunk_indices[i] = chunk_indices[i];
+    }
+
+    perform_lzw(input, temp_chunk_indices, lzw_codes, out_packet_lengths);
+
+};
