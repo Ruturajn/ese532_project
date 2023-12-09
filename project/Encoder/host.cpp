@@ -470,7 +470,7 @@ int main(int argc, char *argv[]) {
     cl::Program program(context, devices, bins, NULL, &err);
     CLDevice dev;
     dev.queue = cl::CommandQueue(context, device,
-                                 CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
+                                 CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE,
                                  &err);
     dev.kernel = cl::Kernel(program, "lzw", &err);
 
