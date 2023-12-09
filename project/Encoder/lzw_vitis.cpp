@@ -133,6 +133,7 @@ unsigned int my_hash(unsigned long key) {
 
 void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
                         bool *hit, unsigned int *result) {
+
     key &= 0x1FFFFF; // make sure key is only 21 bits
 
     unsigned int hash_val = my_hash(key);
@@ -168,6 +169,7 @@ void inline hash_lookup(unsigned long (*hash_table)[2], unsigned int key,
 
 void inline hash_insert(unsigned long (*hash_table)[2], unsigned int key,
                         unsigned int value, bool *collision) {
+
     key &= 0x1FFFFF; // make sure key is only 21 bits
     value &= 0x1FFF; // value is only 13 bits
 
@@ -362,14 +364,19 @@ void lzw(unsigned char input[BUFFER_LEN],
 
 #pragma HLS array_partition variable=temp_lzw_codes block factor=5 dim=1
 #pragma HLS array_partition variable=temp_chunk_indices block factor=10 dim=1
-#pragma HLS array_partition variable=temp_input block factor=16 dim=1
+//#pragma HLS array_partition variable=temp_input block factor=16 dim=1
 
     LOOP4: for (int i = 0; i < MAX_ITERATIONS; i++) {
 #pragma HLS UNROLL
         temp_chunk_indices[i] = chunk_indices[i];
     }
 
-    memcpy(temp_input, input, sizeof(unsigned char) * BUFFER_LEN);
+//    for (int i = 0; i < BUFFER_LEN; i++) {
+//#pragma HLS UNROLL
+//        temp_input[i] = input[i];
+//    }
+
+    // memcpy(temp_input, input, sizeof(unsigned char) * BUFFER_LEN);
 
     // The first element in the chunk_indices array contains the size
     // of the chunk_indices array.
@@ -389,12 +396,12 @@ void lzw(unsigned char input[BUFFER_LEN],
 
     const int bound = chunk_indices_len - 1;
 
-    LOOP5: for (int i = 1; i <= MAX_ITERATIONS; i++) {
+    LOOP5: for (int i = 1; i <= 10; i++) {
 #pragma HLS UNROLL factor=2
         if (i <= bound) {
             generic_info[INFO_START_IDX] = temp_chunk_indices[i];
             generic_info[INFO_END_IDX] = temp_chunk_indices[i + 1];
-            compute_lzw(temp_input, temp_lzw_codes, generic_info, offset);
+            compute_lzw(input, temp_lzw_codes, generic_info, offset);
             out_packet_lengths[i] = generic_info[INFO_OUT_PACKET_LENGTH];
             offset += generic_info[INFO_OUT_PACKET_LENGTH];
         }
