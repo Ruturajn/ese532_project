@@ -22,3 +22,4 @@
 /project/Temp_Files/*.bin
 /project/Text_Files/*.bin
 /project/Text_Files/decoder_13
+/project/*.jou
