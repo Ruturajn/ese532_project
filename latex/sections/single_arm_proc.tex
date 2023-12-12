@@ -1,0 +1,112 @@
+\documentclass[../main.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+
+\begin{document}
+
+\begin{enumerate}
+    \item [a)] The Deduplication and Compression application on a single ARM
+    processor mapped design is described step wise as shown below: \begin{enumerate}
+        \item[1.] The data, ethernet input, is received in real time using ethernet cable from the client machine and stored in local storage, a buffer, using APIs provided in the project.
+        \item[2.] The ethernet input data is then moved into a local input buffer of size 16 KB (Number of Packets * Size of each packet = 16 * 1KB).
+        \item[3.] When the 16 KB buffer is filled, the compression pipeline function is invoked. This compression pipeline includes sub functions (CDC, SHA, DEDUP, LZW and final bit packing) required for compression application.
+        \item [4.] The operations inside compression pipeline take places sequentially which includes:
+        \begin{itemize}
+            \item The input data of 16 KB is passed through the content defined chunking function. The CDC function starts calculating hash value with a window size of 16 (WIN\_SIZE) on the incoming packets. If the hash value matches with the target hash value of 1024, (MODULUS), a chunk is generated. The end index of the chunk is stored and starts for the next chunk. Finally all the chunk boundaries are stored in a vector and moved to the next function.
+            \item The SHA256 function starts calculating the fingerprints for the chunks generated. Next the DEDUP function uses an \texttt{unordered\_map}. It checks if the SHA fingerprint is already present in the unordered map and if not, it assigns each unique chunk a chunk ID and calls LZW on it. If found, just returns the index of the map where it was previously added.
+            \item If a chunk was not found, the LZW function is called which accepts 16 KB input data along with the chunk boundaries. The LZW sends out the compressed data. Then the compressed data is bit packed and stored in a file. 
+            \item Iterate until all the chunks are traversed.
+        \end{itemize}
+        \item[5.] Steps 3 and 4 are repeated for all the packets received via Ethernet. At the end the final compressed binary file is generated. 
+    \end{enumerate}
+    
+    \item [b)] Following are the parameters that were used in our initial implementation.
+    \begin{itemize}
+        \item \textbf{CDC:} The table below shows the default parameters used for CDC.
+            \begin{table}[H]
+                \centering
+                \begin{tabular}{|c|c|} \hline 
+                     WINDOW SIZE& 16\\ \hline 
+                     MODULUS& 1024\\ \hline 
+                     PRIME& 3\\ \hline 
+                     TARGET& 0\\ \hline 
+                     MAX CHUNK SIZE& 8192\\ \hline
+                \end{tabular}
+                \caption{CDC Parameters}
+                \label{tab:cdc_params}
+            \end{table}
+            
+        \item \textbf{SHA:} The following table shows the default parameters used for SHA/DEDUP.
+        
+        \begin{table}[H]
+            \centering
+            \begin{tabular}{|c|c|} \hline 
+                 SHA256 BLOCK SIZE& 32\\ \hline
+            \end{tabular}
+            \caption{SHA Parameters}
+            \label{tab:sha_params}
+        \end{table}
+        
+        This is set to 32 since the SHA256 digest is 32 byte/256 bit long.
+
+        \item \textbf{DEDUP:} For Insertion and lookup in Deduplication, we used an unordered\_map for mapping SHA fingerprints to chunk
+        IDs. The benefit of using unordered\_map was that they
+        gave us O(1) lookup time. \\
+        Datatype - The SHA fingerprints were generated as a byte array. When this was used as a key to the ordered\_map, we were getting a lot of collisions in the Deduplication stage. To counter this, we converted the byte array to a string since an unordered\_map needs a key that can be represented as a single data type to hash into the table.
+
+        \item \textbf{LZW:} Initially we used a hash table of size 65536 and 1 bucket. We used a random hash function initially that consisted of some random bit shifts and manipulations. However, we decided to change the hash function in an attempt to decrease the size of the hash table. 
+
+        Hash function - We eventually moved to the murmur hash function using which we were able to reduce the size of the hash table to 8192. However, for bigger chunks we were still getting collisions, hence, we increased the buckets to 2 that were used as a 2D array.
+
+        \item \textbf{Overall Application:} Number of Packets, We were initially receiving 16 packets since we were using a block size of 1024.
+ 
+        \end{itemize} 
+
+        \item[c)] Key Performance Achieved on Single ARM Processor Design:
+        The throughput of our application is calculated based on the compression latency. The throughput calculation follows the following formula: 
+
+        $$
+        ApplicationThroughput = \frac{\frac{BytesReadFromEthernet \times 8}{1000000}}{TotalCompressionLatency}
+        $$
+
+        In determining the compression latency, we utilized the stopwatch class by encapsulating the start and stop calls around our top function. This top function encompasses all the sub stages, such as CDC, SHA, DEDUP, LZW and includes writing data to the compressed file. Consequently, the calculation throughput is 6.815 Mb/s, equivalent to 0.006815 Gb/s.
+
+        \item[d)] The following table shows the command line parameters:
+            
+            \begin{table}[H]
+                \centering
+                \begin{tabular}{|c|c|} \hline 
+                     Block Size (-b)& 1024\\ \hline 
+                     Sleep Parameter (-s)& 5\\ \hline
+                \end{tabular}
+                \caption{Command Line Parameters}
+                \label{tab:command_line_params}
+            \end{table}
+
+        \newpage
+
+        \item[e)] Compression Achieved:
+        For the test case - LittlePrince.txt file, we achieved a compression ratio of,
+
+        $$
+        \frac{CompressedFileSize}{OriginalFileSize} = \frac{11825}{14247} = 0.83
+        $$
+
+        \item[e)] Breakdown of Time spent on each component:
+            
+            \begin{table}[H]
+                \centering
+                \begin{tabular}{|c|c|} \hline 
+                     \textbf{Task}& \textbf{Time (Days)}\\ \hline 
+                     CDC Implementation& 2\\ \hline 
+                      SHA/DEDUP Implementation& 2\\ \hline 
+                     LZW (on ARM Processor) Implementation& 5\\ \hline 
+                     Main Application and Integration& 3\\ \hline 
+                     Debugging& 4\\ \hline
+                     Testing and Validation& 3\\ \hline
+                \end{tabular}
+                \caption{Breakdown of Time Spent}
+                \label{tab:time_spent}
+            \end{table}
+\end{enumerate}
+
+\end{document}

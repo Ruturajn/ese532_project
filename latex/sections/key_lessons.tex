@@ -1,0 +1,37 @@
+\documentclass[../main.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+
+\begin{document}
+
+\begin{enumerate}
+    \item[a)] Design and Optimization:
+    \begin{itemize}
+        \item Gaining insight into the functionalities of various sub-stages in the system design and algorithmic aspects of CDC for processing Ethernet input data. This includes the incorporation of SHA-256 for deduplication, the utilization of LZW compression, and implementing bit-packing techniques.\\
+        \item Systematically improving function performance by addressing hashing function requirements, selecting data types compatible with both text and binary inputs, and eliminating unnecessary memory copy functions. \\
+        \item Applying vectorization techniques with the NEON accelerator to enhance bandwidth, informed by lessons learned from Homework 4. Identifying application bottlenecks through initial calculations and a simplified software version. \\
+        \item Leveraging Vitis Analyzer for debugging, port assignment, and kernel execution tracing. Utilizing VITIS pragmas to optimize FPGA functions in terms of initiation interval (II) and resource utilization. \\
+        \item Throughout this submission, we found Git to be an invaluable tool, enabling us to maintain tagged code versions. This proved essential for identifying major commits that significantly contributed to functionality or signaled upcoming substantial code revisions. \\
+    \end{itemize}
+
+    \item[b)] Debugging:
+    \begin{itemize}
+        \item We found GDB to be quite useful while debugging the code. It enabled us to use breakpoints, to jump to specific areas in the code and examine everything carefully to pinpoint the issue. It also helped us achieve full functionality of the kernel when working with Vitis, since we used it outside Vitis by compiling our kernel and the testbench with g++.\\
+        \item The packet emulation using file read was also really helpful when testing out the functionality of the complete application.\\
+        \item Including print statements helped examine the state of the output from the kernel since we couldn’t access the host buffer mapped to the kernel using OpenCL in GDB. \\
+        \item Vitis Analyzer proved to be helpful when we were facing a synchronization problem in the host code, and looking at the timeline trace helped us understand the issue and rectify it. \\
+        \item The data flow diagram and the scheduler view in Vitis helped us visualize the control flow and the operations scheduled at various cycles enabling us to pin-point the source code that caused a low II and fix it. \\
+    \end{itemize}
+
+    \item[c)] Teamwork and Collaboration:
+    \begin{itemize}
+        \item We gained valuable insights into effective collaboration by using version control systems like Git and GitHub, where we honed our skills in branching, merging, and resolving conflicts seamlessly within the team. \\
+        \item Task distribution among team members for design, optimization, and debugging was executed with efficiency, ensuring a well-coordinated effort. \\
+        \item Our regular team meetings became a platform for constructive feedback, focusing on aspects like code quality, efficiency, and addressing any issues promptly.\\
+        \item Emphasizing the significance of investing time in thorough testing and debugging to prevent integration issues during the final stages of the project. \\
+        \item Communication played a pivotal role; engaging in discussions about individual tasks, timelines, and challenges faced by team members led to more efficient problem-solving.\\
+        \item Navigating changes in project requirements was approached with flexibility, adapting to unforeseen challenges and proactively adjusting the project plan accordingly. \\
+        \item Recognition and celebration of team achievements and milestones became integral, contributing to the fostering of a positive team culture and maintaining high motivation levels.
+    \end{itemize}
+\end{enumerate}
+
+\end{document}

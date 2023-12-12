@@ -1,0 +1,107 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{blindtext}
+\usepackage{hyperref}
+\usepackage{subfiles}
+\usepackage{titlesec}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{center}
+        \vspace*{8cm}
+        \Huge
+        \textbf{ESE532 Project Report} \\
+    
+        \vspace*{1cm}
+        \Large
+        \textbf{Deduplication and Compression} \\
+        
+        \vspace*{1cm}
+        \large
+        \textbf{Akhil Gunda, Ruturaj Nanoti, Siddhant Mathur} \\
+        \textbf{December 2023}
+    \end{center}
+\end{titlepage}
+
+\newpage
+
+\tableofcontents
+
+\newpage
+
+\section{Single ARM Processor Mapped Design}
+\subfile{sections/single_arm_proc}
+
+\section{Final Ultra96 Mapped Design}
+\subfile{sections/final_ultra96_mapped_design}
+
+\section{Validation and Real-Time Input}
+\subfile{sections/validation_and_real_time}
+
+\section{Key Lessons}
+\subfile{sections/key_lessons}
+
+\section{Design Space Exploration, Graphs and Models}
+\subfile{sections/design_space_graphs}
+
+\section{Future Scope}
+\subfile{sections/future_scope}
+
+\section{Task Distribution}
+\subfile{sections/task_distribution}
+
+\vspace{2cm}
+
+\noindent\fbox{\begin{minipage}{\textwidth}
+We, \textbf{Ruturaj A. Nanoti}, \textbf{Akhil Gunda}, and \textbf{Siddhant Mathur},
+certify that we have complied with the University of Pennsylvania’s Code of 
+Academic Integrity in completing this final exercise.
+\end{minipage}}
+
+\newpage
+
+\section{Appendix}
+\subfile{sections/appendix}
+
+\vspace{1.5cm}
+
+
+\noindent\fbox{\begin{minipage}{\textwidth}
+We, \textbf{Ruturaj A. Nanoti}, \textbf{Akhil Gunda}, and \textbf{Siddhant Mathur},
+certify that we have complied with the University of Pennsylvania’s Code of 
+Academic Integrity in completing this final exercise.
+\end{minipage}}
+
+\end{document}

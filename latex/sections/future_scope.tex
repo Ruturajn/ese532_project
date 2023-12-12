@@ -1,0 +1,11 @@
+\documentclass[../main.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+
+\begin{document}
+
+\noindent In an attempt to optimize this further, we thought of implementing thread pooling where different stages could be run on different threads. By using multiple threads, we could explore pipelining LZW with other parts of the pipeline such as data collection, CDC, SHA and Deduplication. This would enable us to overlap the computation of LZW with that of other stages. \\ \\
+Additionally, we could try to run multiple compute units concurrently for different chunks since each chunk is independent of one another. We tried implementing this for our final design, however, since we were using almost 65\% of the available LUTs, we could not replicate this design to run on multiple compute units. \\ \\
+As of now when the chunks are batched in the kernel, we are sequentially iterating over all the chunks and computing LZW on them individually at a time. Given a better (lower) resource utilization we could unroll the for loop that processes these chunks, and potentially use the dataflow pragma to simulate multiple compute units, i.e., running multiple instances of LZW concurrently.\\ \\
+Apart from that another optimization that we could potentially make is to parallelize the lookup between the buckets in the hash table and the associative memory which would significantly speed up the LZW process and improve the performance overall. Furthermore, we could also use better hash functions and techniques like double hashing to reduce the size of our hash table and improve our resource utilization. This in-turn ties up to the problem of not being able to completely unroll the loop, and effectively leverage the resources present on the FPGA.
+
+\end{document}

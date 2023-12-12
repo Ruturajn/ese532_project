@@ -1,0 +1,111 @@
+\documentclass[../main.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+
+
+
+\begin{document}
+
+\subsection{Vivado Results}
+
+\begin{itemize}
+    \item Control interface of the accelerator wrapper lzw\_1 screenshot:
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.7\linewidth]{Images/image8.png}
+        \caption{Vivado Ports}
+        \label{fig:vivado_ports}
+    \end{figure}
+    
+    For lzw\_1 the s\_axi\_control is mapped to 0x00\_B000\_0000 to 0x00\_B000\_FFFF. \\
+
+    \item Vivado Block design under IP integrator:
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{Images/image12.png}
+        \caption{Vivado Design Block Diagram}
+        \label{fig:vivado_block}
+    \end{figure}
+
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{Images/image20.png}
+        \caption{Vivado Design Overall Block Diagram}
+        \label{fig:vivado_block_overall}
+    \end{figure}
+
+    \vspace{0.7cm}
+
+    \item Device (Design Mapping):
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.7\linewidth]{Images/image18.png}
+        \caption{Vivado Design Mapping}
+        \label{fig:vivado_mapping}
+    \end{figure}
+    
+\end{itemize}
+
+\newpage
+
+\subsection{Vitis HLS and Vitis Analyzer Results}
+
+\begin{itemize}
+    \item Co-Simulation Screenshot:
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.7\linewidth]{Images/image16.png}
+        \caption{Vitis Co-Sim Result}
+        \label{fig:vitis_result_co_sim}
+    \end{figure}
+
+    \item System Diagram:
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{Images/image21.png}
+        \caption{Vitis System Diagram}
+        \label{fig:vitis_system_diag}
+    \end{figure}
+
+    \item Profile Summary:
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{Images/image26.png}
+        \caption{Vitis Profile Summary}
+        \label{fig:vitis_prof_sum}
+    \end{figure}
+
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{Images/image14.png}
+        \caption{Kernel and Compute Units}
+        \label{fig:vitis_prof_sum_cu}
+    \end{figure}
+    
+\end{itemize}
+
+\subsection{Code}
+
+\subsubsection{CDC}
+\lstinputlisting[language=C++]{../Code-Files/fast\_cdc.cpp}
+\vspace{0.5cm}
+
+\subsubsection{SHA}
+\lstinputlisting[language=C++]{../Code-Files/sha.cpp}
+\vspace{0.5cm}
+
+\subsubsection{DEDUP}
+\lstinputlisting[language=C++]{../Code-Files/dedup.cpp}
+\vspace{0.5cm}
+
+\subsubsection{LZW}
+\lstinputlisting[language=C++]{../Code-Files/lzw\_vitis.cpp}
+\vspace{0.5cm}
+
+\subsubsection{Host}
+\lstinputlisting[language=C++]{../Code-Files/host.cpp}
+\vspace{0.5cm}
+
+\subsubsection{Testbench}
+\lstinputlisting[language=C++]{../Code-Files/Testbench.cpp}
+
+\end{document}
