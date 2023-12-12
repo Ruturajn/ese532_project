@@ -66,7 +66,14 @@ HOST_OBJECTS=$(HOST_SOURCES:.cpp=.o)
 HOST_EXE = encoder
 
 $(HOST_EXE): $(HOST_OBJECTS)
-	$(HOST_CXX) -I./Encoder/ -o "$@" $(+) $(LDFLAGS)
+	$(HOST_CXX) -I./Encoder/ -pthread -o "$@" $(+) $(LDFLAGS)
+
+THREAD_HOST_SOURCES = Encoder/cdc.cpp Encoder/sha.cpp Encoder/dedup.cpp Encoder/lzw.cpp Encoder/thread_host.cpp Server/server.cpp Encoder/sha256/sha256.cpp Encoder/Utilities.cpp Encoder/fast_cdc.cpp
+THREAD_HOST_OBJECTS=$(THREAD_HOST_SOURCES:.cpp=.o)
+THREAD_HOST_EXE = thread_encoder
+
+$(THREAD_HOST_EXE): $(THREAD_HOST_OBJECTS)
+	$(HOST_CXX) -I./Encoder/ -pthread -o "$@" $(+) $(LDFLAGS)
 
 SERVER_SOURCES = Server/encoder.cpp Server/server.cpp
 SERVER_OBJECTS =$(SERVER_SOURCES:.cpp=.o)
@@ -95,7 +102,7 @@ proj_sha_debug: $(PROJECT_EXE_SHA_DEBUG)
 proj_cdc_debug: $(PROJECT_EXE_CDC_DEBUG)
 
 $(CLIENT_EXE):
-	$(HOST_CXX) -O3 $(CLIENT_SOURCES) -o "$@"
+	g++ -O3 $(CLIENT_SOURCES) -o "$@"
 
 $(PROJECT_EXE):
 	g++ $(PROJECT_SOURCES) -I./Encoder/ -o "$@"

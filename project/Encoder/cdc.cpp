@@ -10,6 +10,7 @@ uint64_t pow_primes[18] = {1,        3,        9,        27,      81,
                            14348907, 43046721, 129140163};
 
 #define PRIME_WIN_SIZE_POWER 129140163
+#define MINSIZE 1024
 
 static uint64_t hash_func(unsigned char *input, unsigned int pos) {
     uint64_t hash = 0;
@@ -20,18 +21,27 @@ static uint64_t hash_func(unsigned char *input, unsigned int pos) {
 
 void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect) {
 
+	unsigned int prev = 0;
+
     uint64_t hash = hash_func(buff, 0);
 
-    for (unsigned int i = 0; i < buff_size; i++) {
-        if (((hash & MODULUS_MASK) == TARGET) ||
-            ((i & MODULUS_MASK) == TARGET)) {
+    unsigned int i = MINSIZE;
+
+    vect.push_back(0);
+
+    while (i < buff_size) {
+        if (((hash & MODULUS_MASK) == TARGET) || (((i - prev)) == CHUNK_SIZE)) {
 #ifdef CDC_DEBUG
             cout << i << endl;
 #endif
             vect.push_back(i);
+            prev = i;
+            i += MINSIZE;
+            //hash = 0;
         }
         hash = (hash * PRIME) - ((uint64_t)buff[i] * PRIME_WIN_SIZE_POWER) +
                ((uint64_t)buff[i + WIN_SIZE] * PRIME);
+        i++;
     }
 
     vect.push_back(buff_size);

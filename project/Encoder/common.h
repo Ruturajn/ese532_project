@@ -38,7 +38,8 @@ typedef struct __attribute__((packed)) LZWData {
 
 void cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect);
 
-void fast_cdc(unsigned char *buff, unsigned int buff_size, vector<uint32_t> &vect);
+void fast_cdc(unsigned char *buff, unsigned int buff_size,
+              unsigned int chunk_size, vector<uint32_t> &vect);
 
 string sha_256(unsigned char *chunked_data, uint32_t chunk_start_idx,
                uint32_t chunk_end_idx);
@@ -53,10 +54,22 @@ int64_t dedup(string sha_fingerprint);
 //          uint32_t *lzw_codes, uint32_t *code_length, uint8_t *failure,
 // 		 unsigned int *associative_mem);
 
-// void lzw(LZWData *data);
 // void lzw(unsigned char *input, uint32_t *lzw_codes, LZWData *data);
-/* void lzw(unsigned char *input, uint32_t *lzw_codes, */
-/*          uint32_t *chunk_indices, uint32_t *out_packet_lengths); */
-void lzw(unsigned char input[16384], uint32_t lzw_codes[40960],
-         uint32_t chunk_indices[20], uint32_t out_packet_lengths[8192]);
+
+// void lzw(unsigned char *input, uint32_t *lzw_codes,
+//          uint32_t *chunk_indices, uint32_t *out_packet_lengths);
+
+// void lzw(unsigned char input[16384], uint32_t lzw_codes[40960],
+//          uint32_t chunk_indices[20], uint32_t out_packet_lengths[8192]);
+
+void lzw(unsigned char input[16384],
+         uint32_t lzw_codes[40960],
+         uint32_t chunk_indices[20],
+         uint32_t out_packet_lengths[20]);
+
+// void lzw(unsigned char input[PIPELINE_BUFFER_LEN],
+//          unsigned char bit_packed_data[MAX_OUTPUT_BUF_SIZE * 4],
+//          uint32_t chunk_indices[MAX_LZW_CHUNKS],
+//          uint32_t stat_data[4],
+//          int64_t dedup_out[MAX_LZW_CHUNKS]);
 #endif
